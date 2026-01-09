@@ -15,7 +15,8 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
 # Configuration
-$script:LogFile = Join-Path $PSScriptRoot "HyperV-SnapshotTool.log"
+$scriptPath = if ($PSScriptRoot) { $PSScriptRoot } else { $PWD.Path }
+$script:LogFile = Join-Path $scriptPath "HyperV-SnapshotTool.log"
 $script:TeamsWebhookUrl = 'https://asapnet.webhook.office.com/webhookb2/e2cb2abf-e3ad-44a2-9ac2-fc75a3e69157@60922053-03d2-40e3-837a-5ca3fca7102b/IncomingWebhook/cf8d6f80c793446793387c866095bb6d/0fae63a6-c28c-4510-983e-92bc30465c6e/V25JJgAkleuQh2-QQcU88NJWNxOj4QcaRikzUgQZrp_qc1'
 
 # Logging function
