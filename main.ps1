@@ -200,7 +200,7 @@ function Get-AllSnapshots {
             if ($node -eq 'localhost' -or $node -eq $env:COMPUTERNAME) {
                 $snapshots = Get-VMSnapshot -VM $vm -ErrorAction Stop
             } else {
-                $snapshots = Get-VMSnapshot -VM $vm -ComputerName $node -ErrorAction Stop
+                $snapshots = Get-VMSnapshot -VMName $vm.Name -ComputerName $node -ErrorAction Stop
             }
 
             foreach ($snapshot in $snapshots) {
