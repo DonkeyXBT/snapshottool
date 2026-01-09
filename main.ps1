@@ -385,7 +385,7 @@ $buttonDelete.Add_Click({
                     if ($node -eq 'localhost' -or $node -eq $env:COMPUTERNAME) {
                         Remove-VMSnapshot -VMSnapshot $snapshotToDelete.Snapshot -Confirm:$false -ErrorAction Stop
                     } else {
-                        Remove-VMSnapshot -VMSnapshot $snapshotToDelete.Snapshot -ComputerName $node -Confirm:$false -ErrorAction Stop
+                        Remove-VMSnapshot -VMName $vmName -Name $snapshotName -ComputerName $node -Confirm:$false -ErrorAction Stop
                     }
                     $successCount++
                 }
