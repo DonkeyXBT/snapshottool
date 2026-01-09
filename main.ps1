@@ -374,19 +374,25 @@ $buttonDelete.Add_Click({
             try {
                 Update-Status "Deleting snapshot '$snapshotName' from VM '$vmName'..." "Blue"
 
-                # Find the snapshot object
-                $snapshotToDelete = $script:allSnapshots | Where-Object {
-                    $_.Node -eq $node -and
-                    $_.VMName -eq $vmName -and
-                    $_.SnapshotName -eq $snapshotName
-                } | Select-Object -First 1
+                if ($node -eq 'localhost' -or $node -eq $env:COMPUTERNAME) {
+                    # Local deletion using snapshot object
+                    $snapshotToDelete = $script:allSnapshots | Where-Object {
+                        $_.Node -eq $node -and
+                        $_.VMName -eq $vmName -and
+                        $_.SnapshotName -eq $snapshotName
+                    } | Select-Object -First 1
 
-                if ($snapshotToDelete) {
-                    if ($node -eq 'localhost' -or $node -eq $env:COMPUTERNAME) {
+                    if ($snapshotToDelete) {
                         Remove-VMSnapshot -VMSnapshot $snapshotToDelete.Snapshot -Confirm:$false -ErrorAction Stop
-                    } else {
-                        Remove-VMSnapshot -VMName $vmName -Name $snapshotName -ComputerName $node -Confirm:$false -ErrorAction Stop
+                        $successCount++
                     }
+                } else {
+                    # Remote deletion using Invoke-Command
+                    Invoke-Command -ComputerName $node -ScriptBlock {
+                        param($VMName, $SnapshotName)
+                        $snapshot = Get-VMSnapshot -VMName $VMName -Name $SnapshotName -ErrorAction Stop
+                        Remove-VMSnapshot -VMSnapshot $snapshot -Confirm:$false -ErrorAction Stop
+                    } -ArgumentList $vmName, $snapshotName -ErrorAction Stop
                     $successCount++
                 }
             }
