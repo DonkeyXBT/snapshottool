@@ -10,6 +10,9 @@ A PowerShell-based GUI tool for managing Hyper-V virtual machine snapshots acros
 - **Easy Deletion**: Select and delete multiple snapshots with a single click
 - **Age Tracking**: Shows snapshot age in days, hours, and minutes
 - **Statistics**: Displays total snapshots and count of snapshots older than 7 days
+- **Background Processing**: Non-blocking UI when connecting to multiple hosts
+- **Logging**: Automatic logging of all operations to HyperV-SnapshotTool.log
+- **Teams Notifications**: Automatic Teams webhook notifications when snapshots are deleted
 - **User-Friendly Interface**: Clean, intuitive Windows Forms GUI
 
 ## Requirements
@@ -91,6 +94,57 @@ Click the **Refresh** button to reload all snapshot information without reconnec
 │              │ [Delete Selected] [Select All] [Deselect All]   │
 │              │ Total: X snapshots | Older than 7 days: Y       │
 └──────────────┴──────────────────────────────────────────────────┘
+```
+
+## Logging and Notifications
+
+### Automatic Logging
+
+The tool automatically logs all operations to a file named `HyperV-SnapshotTool.log` in the same directory as the script.
+
+**Logged Events:**
+- Application start
+- Connection attempts to Hyper-V nodes
+- VM and snapshot discovery
+- Snapshot refresh operations
+- Snapshot deletion (success and failures)
+- Errors and warnings
+
+**Log Format:**
+```
+[2026-01-09 14:30:15] [INFO] Hyper-V Snapshot Management Tool started
+[2026-01-09 14:30:20] [INFO] Connecting to nodes: HyperV-01, HyperV-02
+[2026-01-09 14:30:25] [SUCCESS] Successfully loaded 45 VMs and 128 snapshots
+[2026-01-09 14:31:10] [SUCCESS] Successfully deleted snapshot 'Test-Snapshot' from VM 'WebServer01' on node 'HyperV-01'
+```
+
+### Teams Webhook Notifications
+
+When snapshots are successfully deleted, the tool automatically sends a notification to Microsoft Teams via webhook.
+
+**Notification Contents:**
+- Number of snapshots deleted
+- Details of each deleted snapshot (snapshot name, VM name, node)
+- Number of failures (if any)
+- Username and computer name of the person who performed the deletion
+
+**Configuration:**
+The Teams webhook URL is configured in the script at line 19. To change it, edit the `$script:TeamsWebhookUrl` variable:
+
+```powershell
+$script:TeamsWebhookUrl = 'YOUR_TEAMS_WEBHOOK_URL_HERE'
+```
+
+**Example Teams Message:**
+```
+Hyper-V Snapshots Deleted
+Deleted Snapshots: 3
+
+- Test-Snapshot from VM WebServer01 on node HyperV-01
+- Old-Checkpoint from VM DBServer02 on node HyperV-02
+- Backup-20250101 from VM AppServer03 on node HyperV-01
+
+Executed by: AdminUser on MGMT-PC01
 ```
 
 ## Permissions
