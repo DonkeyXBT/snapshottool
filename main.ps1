@@ -14,6 +14,55 @@
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
+# Configuration
+$script:LogFile = Join-Path $PSScriptRoot "HyperV-SnapshotTool.log"
+$script:TeamsWebhookUrl = 'https://asapnet.webhook.office.com/webhookb2/e2cb2abf-e3ad-44a2-9ac2-fc75a3e69157@60922053-03d2-40e3-837a-5ca3fca7102b/IncomingWebhook/cf8d6f80c793446793387c866095bb6d/0fae63a6-c28c-4510-983e-92bc30465c6e/V25JJgAkleuQh2-QQcU88NJWNxOj4QcaRikzUgQZrp_qc1'
+
+# Logging function
+function Write-Log {
+    param(
+        [string]$Message,
+        [ValidateSet('INFO', 'WARNING', 'ERROR', 'SUCCESS')]
+        [string]$Level = 'INFO'
+    )
+
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $logMessage = "[$timestamp] [$Level] $Message"
+
+    try {
+        Add-Content -Path $script:LogFile -Value $logMessage -ErrorAction Stop
+    }
+    catch {
+        Write-Warning "Failed to write to log file: $($_.Exception.Message)"
+    }
+}
+
+# Teams webhook notification function
+function Send-TeamsNotification {
+    param(
+        [string]$Title,
+        [string]$Message,
+        [string]$Color = "00FF00"  # Green by default
+    )
+
+    try {
+        $body = @{
+            "@type" = "MessageCard"
+            "@context" = "https://schema.org/extensions"
+            "summary" = $Title
+            "themeColor" = $Color
+            "title" = $Title
+            "text" = $Message
+        } | ConvertTo-Json
+
+        Invoke-RestMethod -Uri $script:TeamsWebhookUrl -Method Post -Body $body -ContentType 'application/json' -ErrorAction Stop
+        Write-Log "Teams notification sent: $Title" "INFO"
+    }
+    catch {
+        Write-Log "Failed to send Teams notification: $($_.Exception.Message)" "ERROR"
+    }
+}
+
 # Create the main form
 $form = New-Object System.Windows.Forms.Form
 $form.Text = 'Hyper-V Snapshot Management Tool'
@@ -137,6 +186,9 @@ $script:allSnapshots = @()
 $script:runspace = $null
 $script:powerShell = $null
 
+# Initialize log file
+Write-Log "Hyper-V Snapshot Management Tool started" "INFO"
+
 # Create Timer for checking background operations
 $timer = New-Object System.Windows.Forms.Timer
 $timer.Interval = 500  # Check every 500ms
@@ -154,6 +206,8 @@ $timer.Add_Tick({
                 $script:allVMs = $result.VMs
                 $script:allSnapshots = $result.Snapshots
 
+                Write-Log "Successfully loaded $($script:allVMs.Count) VMs and $($script:allSnapshots.Count) snapshots" "SUCCESS"
+
                 # Populate VM list
                 $listBoxVMs.Items.Clear()
                 foreach ($vmData in $script:allVMs) {
@@ -168,6 +222,7 @@ $timer.Add_Tick({
                     $buttonSelectAll.Enabled = $false
                     $buttonDeselectAll.Enabled = $false
                     $dataGridSnapshots.DataSource = $null
+                    Write-Log "No snapshots found on any VMs" "INFO"
                 } else {
                     # Create DataTable for display
                     $dataTable = New-Object System.Data.DataTable
@@ -397,6 +452,7 @@ $buttonConnect.Add_Click({
     # Parse nodes
     $script:hyperVNodes = $nodeInput -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' }
 
+    Write-Log "Connecting to nodes: $($script:hyperVNodes -join ', ')" "INFO"
     Update-Status "Connecting to nodes in background..." "Blue"
 
     # Clear existing data
@@ -511,6 +567,7 @@ $buttonRefresh.Add_Click({
         return
     }
 
+    Write-Log "Refreshing snapshot data" "INFO"
     Update-Status "Refreshing snapshots in background..." "Blue"
     $dataGridSnapshots.DataSource = $null
 
@@ -608,6 +665,9 @@ $buttonDelete.Add_Click({
     if ($result -eq [System.Windows.Forms.DialogResult]::Yes) {
         $successCount = 0
         $failCount = 0
+        $deletedSnapshots = @()
+
+        Write-Log "Starting deletion of $($selectedRows.Count) snapshot(s)" "INFO"
 
         foreach ($row in $selectedRows) {
             $node = $row.Cells["Node"].Value
@@ -628,6 +688,12 @@ $buttonDelete.Add_Click({
                     if ($snapshotToDelete) {
                         Remove-VMSnapshot -VMSnapshot $snapshotToDelete.Snapshot -Confirm:$false -ErrorAction Stop
                         $successCount++
+                        $deletedSnapshots += @{
+                            Node = $node
+                            VM = $vmName
+                            Snapshot = $snapshotName
+                        }
+                        Write-Log "Successfully deleted snapshot '$snapshotName' from VM '$vmName' on node '$node'" "SUCCESS"
                     }
                 } else {
                     # Remote deletion using Invoke-Command
@@ -637,16 +703,40 @@ $buttonDelete.Add_Click({
                         Remove-VMSnapshot -VMSnapshot $snapshot -Confirm:$false -ErrorAction Stop
                     } -ArgumentList $vmName, $snapshotName -ErrorAction Stop
                     $successCount++
+                    $deletedSnapshots += @{
+                        Node = $node
+                        VM = $vmName
+                        Snapshot = $snapshotName
+                    }
+                    Write-Log "Successfully deleted snapshot '$snapshotName' from VM '$vmName' on node '$node'" "SUCCESS"
                 }
             }
             catch {
                 $failCount++
+                Write-Log "Failed to delete snapshot '$snapshotName' from VM '$vmName' on node '$node': $($_.Exception.Message)" "ERROR"
                 Write-Warning "Failed to delete snapshot '$snapshotName': $($_.Exception.Message)"
             }
         }
 
+        # Send Teams notification if any snapshots were deleted
+        if ($successCount -gt 0) {
+            $snapshotDetails = $deletedSnapshots | ForEach-Object {
+                "- **$($_.Snapshot)** from VM **$($_.VM)** on node **$($_.Node)**"
+            }
+            $teamsMessage = "**Deleted Snapshots: $successCount**`n`n" + ($snapshotDetails -join "`n")
+
+            if ($failCount -gt 0) {
+                $teamsMessage += "`n`n**Failed: $failCount snapshot(s)**"
+            }
+
+            $teamsMessage += "`n`n*Executed by: $env:USERNAME on $env:COMPUTERNAME*"
+
+            Send-TeamsNotification -Title "Hyper-V Snapshots Deleted" -Message $teamsMessage -Color "00FF00"
+        }
+
         if ($failCount -eq 0) {
             Update-Status "Successfully deleted $successCount snapshot(s)" "Green"
+            Write-Log "Deletion completed: $successCount succeeded" "SUCCESS"
             [System.Windows.Forms.MessageBox]::Show(
                 "Successfully deleted $successCount snapshot(s)",
                 "Success",
@@ -655,6 +745,7 @@ $buttonDelete.Add_Click({
             )
         } else {
             Update-Status "Deleted $successCount snapshot(s), $failCount failed" "Orange"
+            Write-Log "Deletion completed: $successCount succeeded, $failCount failed" "WARNING"
             [System.Windows.Forms.MessageBox]::Show(
                 "Deleted $successCount snapshot(s)`nFailed: $failCount",
                 "Partial Success",
