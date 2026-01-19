@@ -10,6 +10,16 @@ function Initialize-LogFile {
     $logPath = if ($ScriptPath) { $ScriptPath } else { $PWD.Path }
     $script:LogFile = Join-Path $logPath "HyperV-ManagementTool.log"
 
+    # Create log file if it doesn't exist
+    try {
+        if (-not (Test-Path $script:LogFile)) {
+            New-Item -Path $script:LogFile -ItemType File -Force | Out-Null
+        }
+    }
+    catch {
+        Write-Warning "Failed to create log file: $($_.Exception.Message)"
+    }
+
     Write-Log "Hyper-V Server Management Tool started" "INFO"
 }
 
@@ -72,4 +82,116 @@ function Update-Status {
     }
 }
 
-Export-ModuleMember -Function Initialize-LogFile, Write-Log, Send-TeamsNotification, Update-Status
+function Export-ToCSV {
+    param(
+        [Parameter(Mandatory=$true)]
+        [System.Data.DataTable]$DataTable,
+        [Parameter(Mandatory=$true)]
+        [string]$DefaultFileName
+    )
+
+    try {
+        $saveFileDialog = New-Object System.Windows.Forms.SaveFileDialog
+        $saveFileDialog.Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*"
+        $saveFileDialog.FileName = $DefaultFileName
+        $saveFileDialog.Title = "Export to CSV"
+
+        if ($saveFileDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+            $csvData = @()
+            foreach ($row in $DataTable.Rows) {
+                $rowData = @{}
+                foreach ($column in $DataTable.Columns) {
+                    $rowData[$column.ColumnName] = $row[$column.ColumnName]
+                }
+                $csvData += New-Object PSObject -Property $rowData
+            }
+
+            $csvData | Export-Csv -Path $saveFileDialog.FileName -NoTypeInformation -Encoding UTF8
+            Write-Log "Exported data to CSV: $($saveFileDialog.FileName)" "SUCCESS"
+            return $true
+        }
+        return $false
+    }
+    catch {
+        Write-Log "Failed to export to CSV: $($_.Exception.Message)" "ERROR"
+        return $false
+    }
+}
+
+# Favorites management
+$script:FavoritesFile = $null
+$script:Favorites = @()
+
+function Initialize-Favorites {
+    param([string]$ScriptPath)
+
+    $favPath = if ($ScriptPath) { $ScriptPath } else { $PWD.Path }
+    $script:FavoritesFile = Join-Path $favPath "favorites.json"
+
+    # Load existing favorites
+    if (Test-Path $script:FavoritesFile) {
+        try {
+            $script:Favorites = Get-Content $script:FavoritesFile -Raw | ConvertFrom-Json
+            if (-not $script:Favorites) { $script:Favorites = @() }
+        }
+        catch {
+            $script:Favorites = @()
+        }
+    }
+}
+
+function Add-Favorite {
+    param(
+        [string]$Node,
+        [string]$VMName
+    )
+
+    $favorite = @{
+        Node = $Node
+        VMName = $VMName
+        AddedDate = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+    }
+
+    if ($script:Favorites -notcontains $favorite) {
+        $script:Favorites += $favorite
+        Save-Favorites
+        Write-Log "Added favorite: $VMName on $Node" "INFO"
+        return $true
+    }
+    return $false
+}
+
+function Remove-Favorite {
+    param(
+        [string]$Node,
+        [string]$VMName
+    )
+
+    $script:Favorites = $script:Favorites | Where-Object { -not ($_.Node -eq $Node -and $_.VMName -eq $VMName) }
+    Save-Favorites
+    Write-Log "Removed favorite: $VMName on $Node" "INFO"
+}
+
+function Get-Favorites {
+    return $script:Favorites
+}
+
+function Test-IsFavorite {
+    param(
+        [string]$Node,
+        [string]$VMName
+    )
+
+    return ($script:Favorites | Where-Object { $_.Node -eq $Node -and $_.VMName -eq $VMName }).Count -gt 0
+}
+
+function Save-Favorites {
+    try {
+        $script:Favorites | ConvertTo-Json | Set-Content -Path $script:FavoritesFile -Encoding UTF8
+    }
+    catch {
+        Write-Log "Failed to save favorites: $($_.Exception.Message)" "ERROR"
+    }
+}
+
+Export-ModuleMember -Function Initialize-LogFile, Write-Log, Send-TeamsNotification, Update-Status, Export-ToCSV, Initialize-Favorites, Add-Favorite, Remove-Favorite, Get-Favorites, Test-IsFavorite

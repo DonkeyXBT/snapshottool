@@ -19,13 +19,26 @@ A comprehensive PowerShell-based GUI tool for managing Hyper-V servers and virtu
 - **Age Tracking**: Shows snapshot age in days, hours, and minutes
 - **Statistics**: Displays total snapshots and count of snapshots older than 7 days
 
+### Search & Filtering
+- **Quick Search**: Real-time search boxes for VMs, snapshots, and server information
+- **State Filtering**: Filter VMs by state (Running, Stopped, Paused, Saved)
+- **Age Filtering**: Filter snapshots by age (7, 30, or 90 days)
+- **Favorites Filter**: Show only favorite VMs with one click
+
+### Data Management
+- **Export to CSV**: Export server information and snapshot data to CSV files
+- **Favorites System**: Mark VMs as favorites for quick access
+- **Right-click Context Menu**: Add/remove favorites via context menu on server grid
+
 ### General Features
+- **Modern UI**: Professional blue color scheme with custom title bar
+- **Custom Title Bar**: Draggable title bar with minimize, maximize, and close buttons
 - **Main Menu Interface**: Easy navigation between Server Management and Snapshot Management
 - **Background Processing**: All operations run in background threads for non-blocking UI
 - **Modular Architecture**: Organized code structure with separate modules for better performance
 - **Logging**: Automatic logging of all operations to HyperV-ManagementTool.log
 - **Teams Notifications**: Automatic Teams webhook notifications when snapshots are deleted
-- **User-Friendly Interface**: Clean, intuitive Windows Forms GUI
+- **Responsive Design**: Clean, intuitive interface with hover effects and smooth transitions
 
 ## Requirements
 
@@ -316,3 +329,4 @@ This tool is provided as-is for managing Hyper-V environments.
 Created by Claude
 - Version 1.0: 2026-01-09 - Initial snapshot management tool
 - Version 2.0: 2026-01-19 - Added server management and modular architecture
+- Version 2.1: 2026-01-19 - Modern UI, search & filtering, export to CSV, favorites system
