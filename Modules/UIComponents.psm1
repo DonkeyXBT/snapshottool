@@ -54,14 +54,13 @@ function New-CustomTitleBar {
     $btnMinimize.Size = New-Object System.Drawing.Size(30, 30)
     $btnMinimize.Text = '─'
     $btnMinimize.ForeColor = [System.Drawing.Color]::White
-    $btnMinimize.BackColor = [System.Drawing.Color]::Transparent
+    $btnMinimize.BackColor = $script:ColorPrimaryDark
     $btnMinimize.FlatStyle = 'Flat'
     $btnMinimize.FlatAppearance.BorderSize = 0
+    $btnMinimize.FlatAppearance.MouseOverBackColor = $script:ColorPrimary
     $btnMinimize.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
     $btnMinimize.Cursor = [System.Windows.Forms.Cursors]::Hand
     $btnMinimize.Add_Click({ $Form.WindowState = 'Minimized' })
-    $btnMinimize.Add_MouseEnter({ $btnMinimize.BackColor = $script:ColorPrimary })
-    $btnMinimize.Add_MouseLeave({ $btnMinimize.BackColor = [System.Drawing.Color]::Transparent })
     $titleBar.Controls.Add($btnMinimize)
 
     # Maximize button
@@ -70,9 +69,10 @@ function New-CustomTitleBar {
     $btnMaximize.Size = New-Object System.Drawing.Size(30, 30)
     $btnMaximize.Text = '▢'
     $btnMaximize.ForeColor = [System.Drawing.Color]::White
-    $btnMaximize.BackColor = [System.Drawing.Color]::Transparent
+    $btnMaximize.BackColor = $script:ColorPrimaryDark
     $btnMaximize.FlatStyle = 'Flat'
     $btnMaximize.FlatAppearance.BorderSize = 0
+    $btnMaximize.FlatAppearance.MouseOverBackColor = $script:ColorPrimary
     $btnMaximize.Font = New-Object System.Drawing.Font("Segoe UI", 9)
     $btnMaximize.Cursor = [System.Windows.Forms.Cursors]::Hand
     $btnMaximize.Add_Click({
@@ -82,8 +82,6 @@ function New-CustomTitleBar {
             $Form.WindowState = 'Maximized'
         }
     })
-    $btnMaximize.Add_MouseEnter({ $btnMaximize.BackColor = $script:ColorPrimary })
-    $btnMaximize.Add_MouseLeave({ $btnMaximize.BackColor = [System.Drawing.Color]::Transparent })
     $titleBar.Controls.Add($btnMaximize)
 
     # Close button
@@ -92,14 +90,13 @@ function New-CustomTitleBar {
     $btnClose.Size = New-Object System.Drawing.Size(30, 30)
     $btnClose.Text = 'X'
     $btnClose.ForeColor = [System.Drawing.Color]::White
-    $btnClose.BackColor = [System.Drawing.Color]::Transparent
+    $btnClose.BackColor = $script:ColorPrimaryDark
     $btnClose.FlatStyle = 'Flat'
     $btnClose.FlatAppearance.BorderSize = 0
+    $btnClose.FlatAppearance.MouseOverBackColor = $script:ColorDanger
     $btnClose.Font = New-Object System.Drawing.Font("Segoe UI", 10)
     $btnClose.Cursor = [System.Windows.Forms.Cursors]::Hand
     $btnClose.Add_Click({ $Form.Close() })
-    $btnClose.Add_MouseEnter({ $btnClose.BackColor = $script:ColorDanger })
-    $btnClose.Add_MouseLeave({ $btnClose.BackColor = [System.Drawing.Color]::Transparent })
     $titleBar.Controls.Add($btnClose)
 
     # Make title bar draggable
@@ -184,11 +181,10 @@ function New-ConnectionPanel {
     $buttonConnect.ForeColor = [System.Drawing.Color]::White
     $buttonConnect.FlatStyle = 'Flat'
     $buttonConnect.FlatAppearance.BorderSize = 0
+    $buttonConnect.FlatAppearance.MouseOverBackColor = $script:ColorAccent
     $buttonConnect.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
     $buttonConnect.Cursor = [System.Windows.Forms.Cursors]::Hand
     $buttonConnect.Name = 'buttonConnect'
-    $buttonConnect.Add_MouseEnter({ $buttonConnect.BackColor = $script:ColorAccent })
-    $buttonConnect.Add_MouseLeave({ $buttonConnect.BackColor = $script:ColorPrimary })
     $panel.Controls.Add($buttonConnect)
 
     $buttonBackToMenu = New-Object System.Windows.Forms.Button
@@ -199,12 +195,11 @@ function New-ConnectionPanel {
     $buttonBackToMenu.ForeColor = [System.Drawing.Color]::White
     $buttonBackToMenu.FlatStyle = 'Flat'
     $buttonBackToMenu.FlatAppearance.BorderSize = 0
+    $buttonBackToMenu.FlatAppearance.MouseOverBackColor = $script:ColorText
     $buttonBackToMenu.Font = New-Object System.Drawing.Font("Segoe UI", 10)
     $buttonBackToMenu.Cursor = [System.Windows.Forms.Cursors]::Hand
     $buttonBackToMenu.Enabled = $false
     $buttonBackToMenu.Name = 'buttonBackToMenu'
-    $buttonBackToMenu.Add_MouseEnter({ if ($buttonBackToMenu.Enabled) { $buttonBackToMenu.BackColor = $script:ColorText } })
-    $buttonBackToMenu.Add_MouseLeave({ if ($buttonBackToMenu.Enabled) { $buttonBackToMenu.BackColor = $script:ColorTextLight } })
     $panel.Controls.Add($buttonBackToMenu)
 
     # Status label

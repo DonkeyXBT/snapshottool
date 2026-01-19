@@ -10,8 +10,17 @@ function Initialize-LogFile {
     $logPath = if ($ScriptPath) { $ScriptPath } else { $PWD.Path }
     $script:LogFile = Join-Path $logPath "HyperV-ManagementTool.log"
 
-    # Create log file if it doesn't exist
+    # Ensure parent directory exists and create log file
     try {
+        # Get the directory path
+        $logDirectory = Split-Path -Path $script:LogFile -Parent
+
+        # Create directory if it doesn't exist
+        if (-not (Test-Path $logDirectory)) {
+            New-Item -Path $logDirectory -ItemType Directory -Force | Out-Null
+        }
+
+        # Create log file if it doesn't exist
         if (-not (Test-Path $script:LogFile)) {
             New-Item -Path $script:LogFile -ItemType File -Force | Out-Null
         }
