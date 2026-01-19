@@ -8,10 +8,13 @@
     A comprehensive GUI tool to manage Hyper-V servers and VMs including:
     - Server Management: View IP addresses, memory, and storage information
     - Snapshot Management: View and delete VM snapshots
+    - Search & Filtering: Quick find VMs and snapshots
+    - Export to CSV: Export data for reporting
+    - Favorites: Mark VMs as favorites
 .NOTES
     Author: Claude
     Date: 2026-01-19
-    Version: 2.0 (Modular)
+    Version: 2.1 (Modern UI with Search, Filter, Export, Favorites)
 #>
 
 # Get script path
@@ -23,25 +26,31 @@ Import-Module (Join-Path $scriptPath "Modules\ServerManagement.psm1") -Force
 Import-Module (Join-Path $scriptPath "Modules\SnapshotManagement.psm1") -Force
 Import-Module (Join-Path $scriptPath "Modules\UIComponents.psm1") -Force
 
-# Initialize logging
+# Initialize logging and favorites
 Initialize-LogFile -ScriptPath $scriptPath
+Initialize-Favorites -ScriptPath $scriptPath
 
 # Global variables
 $script:hyperVNodes = @()
 $script:allVMs = @()
 $script:allSnapshots = @()
 $script:serverInfo = @()
+$script:filteredServerInfo = @()
+$script:filteredSnapshots = @()
+$script:filteredVMs = @()
 $script:runspace = $null
 $script:powerShell = $null
 $script:currentView = "menu"
 
 # Create the main form and panels
 $form = New-MainForm
+$titleBar = New-CustomTitleBar -Form $form
 $panelConnection = New-ConnectionPanel -Form $form
 $panelMenu = New-MenuPanel
 $panelServer = New-ServerManagementPanel
 $panelSnapshot = New-SnapshotManagementPanel
 
+$form.Controls.Add($titleBar)
 $form.Controls.Add($panelConnection)
 $form.Controls.Add($panelMenu)
 $form.Controls.Add($panelServer)
@@ -54,9 +63,22 @@ $buttonBackToMenu = Find-ControlByName -Parent $form -Name 'buttonBackToMenu'
 $labelStatus = Find-ControlByName -Parent $form -Name 'labelStatus'
 $buttonServerMgmt = Find-ControlByName -Parent $form -Name 'buttonServerMgmt'
 $buttonSnapshotMgmt = Find-ControlByName -Parent $form -Name 'buttonSnapshotMgmt'
+
+# Server Management controls
 $buttonRefreshServer = Find-ControlByName -Parent $form -Name 'buttonRefreshServer'
-$buttonRefreshSnapshot = Find-ControlByName -Parent $form -Name 'buttonRefreshSnapshot'
+$buttonExportServer = Find-ControlByName -Parent $form -Name 'buttonExportServer'
+$textBoxSearchServer = Find-ControlByName -Parent $form -Name 'textBoxSearchServer'
+$comboBoxFilterServer = Find-ControlByName -Parent $form -Name 'comboBoxFilterServer'
+$checkBoxFavoritesServer = Find-ControlByName -Parent $form -Name 'checkBoxFavoritesServer'
 $dataGridServer = Find-ControlByName -Parent $form -Name 'dataGridServer'
+$labelSummaryServer = Find-ControlByName -Parent $form -Name 'labelSummaryServer'
+
+# Snapshot Management controls
+$buttonRefreshSnapshot = Find-ControlByName -Parent $form -Name 'buttonRefreshSnapshot'
+$buttonExportSnapshot = Find-ControlByName -Parent $form -Name 'buttonExportSnapshot'
+$textBoxSearchVM = Find-ControlByName -Parent $form -Name 'textBoxSearchVM'
+$textBoxSearchSnapshot = Find-ControlByName -Parent $form -Name 'textBoxSearchSnapshot'
+$comboBoxAgeFilter = Find-ControlByName -Parent $form -Name 'comboBoxAgeFilter'
 $dataGridSnapshots = Find-ControlByName -Parent $form -Name 'dataGridSnapshots'
 $listBoxVMs = Find-ControlByName -Parent $form -Name 'listBoxVMs'
 $buttonDelete = Find-ControlByName -Parent $form -Name 'buttonDelete'
@@ -131,15 +153,40 @@ function Show-Panel {
     }
 }
 
-# Function to load server management data
-function Load-ServerManagementData {
-    if ($script:serverInfo.Count -eq 0) {
-        Update-Status -StatusLabel $labelStatus -Message "Loading server information..." -Color "Blue"
-        Get-ServerInformation
-        return
+# Apply server filters
+function Apply-ServerFilters {
+    $searchText = $textBoxSearchServer.Text
+    if ($searchText -eq '🔍 Search VMs...') { $searchText = '' }
+    $stateFilter = $comboBoxFilterServer.SelectedItem
+    $favoritesOnly = $checkBoxFavoritesServer.Checked
+
+    $script:filteredServerInfo = $script:serverInfo | Where-Object {
+        $matchesSearch = $true
+        $matchesState = $true
+        $matchesFavorites = $true
+
+        if ($searchText) {
+            $matchesSearch = ($_.VMName -like "*$searchText*") -or ($_.IPAddresses -like "*$searchText*") -or ($_.Node -like "*$searchText*")
+        }
+
+        if ($stateFilter -and $stateFilter -ne 'All States') {
+            $matchesState = $_.State -eq $stateFilter
+        }
+
+        if ($favoritesOnly) {
+            $matchesFavorites = Test-IsFavorite -Node $_.Node -VMName $_.VMName
+        }
+
+        $matchesSearch -and $matchesState -and $matchesFavorites
     }
 
+    Refresh-ServerGrid
+}
+
+# Refresh server grid
+function Refresh-ServerGrid {
     $dataTable = New-Object System.Data.DataTable
+    [void]$dataTable.Columns.Add("⭐", [string])
     [void]$dataTable.Columns.Add("Node", [string])
     [void]$dataTable.Columns.Add("VM Name", [string])
     [void]$dataTable.Columns.Add("State", [string])
@@ -151,8 +198,10 @@ function Load-ServerManagementData {
     [void]$dataTable.Columns.Add("Disk Size (GB)", [string])
     [void]$dataTable.Columns.Add("Disk Used (GB)", [string])
 
-    foreach ($server in $script:serverInfo) {
+    foreach ($server in $script:filteredServerInfo) {
+        $isFav = if (Test-IsFavorite -Node $server.Node -VMName $server.VMName) { "⭐" } else { "" }
         [void]$dataTable.Rows.Add(
+            $isFav,
             $server.Node,
             $server.VMName,
             $server.State,
@@ -167,15 +216,117 @@ function Load-ServerManagementData {
     }
 
     $dataGridServer.DataSource = $dataTable
+    $labelSummaryServer.Text = "Showing $($script:filteredServerInfo.Count) of $($script:serverInfo.Count) VMs"
+}
+
+# Apply snapshot filters
+function Apply-SnapshotFilters {
+    $searchText = $textBoxSearchSnapshot.Text
+    if ($searchText -eq '🔍 Search snapshots...') { $searchText = '' }
+    $ageFilter = $comboBoxAgeFilter.SelectedItem
+
+    $script:filteredSnapshots = $script:allSnapshots | Where-Object {
+        $matchesSearch = $true
+        $matchesAge = $true
+
+        if ($searchText) {
+            $matchesSearch = ($_.SnapshotName -like "*$searchText*") -or ($_.VMName -like "*$searchText*") -or ($_.Node -like "*$searchText*")
+        }
+
+        if ($ageFilter -and $ageFilter -ne 'All Ages') {
+            switch ($ageFilter) {
+                'Older than 7 days' { $matchesAge = $_.AgeDays -gt 7 }
+                'Older than 30 days' { $matchesAge = $_.AgeDays -gt 30 }
+                'Older than 90 days' { $matchesAge = $_.AgeDays -gt 90 }
+            }
+        }
+
+        $matchesSearch -and $matchesAge
+    }
+
+    Refresh-SnapshotGrid
+}
+
+# Apply VM list filters
+function Apply-VMListFilters {
+    $searchText = $textBoxSearchVM.Text
+    if ($searchText -eq '🔍 Search VMs...') { $searchText = '' }
+
+    $script:filteredVMs = $script:allVMs | Where-Object {
+        if ($searchText) {
+            ($_.Name -like "*$searchText*") -or ($_.Node -like "*$searchText*") -or ($_.DisplayName -like "*$searchText*")
+        } else {
+            $true
+        }
+    }
+
+    $listBoxVMs.Items.Clear()
+    foreach ($vmData in $script:filteredVMs) {
+        $displayText = $vmData.DisplayName
+        if (Test-IsFavorite -Node $vmData.Node -VMName $vmData.Name) {
+            $displayText = "⭐ " + $displayText
+        }
+        [void]$listBoxVMs.Items.Add($displayText)
+    }
+}
+
+# Refresh snapshot grid
+function Refresh-SnapshotGrid {
+    if ($script:filteredSnapshots.Count -eq 0) {
+        $labelSummary.Text = "No snapshots match the current filter"
+        $buttonDelete.Enabled = $false
+        $buttonSelectAll.Enabled = $false
+        $buttonDeselectAll.Enabled = $false
+        $dataGridSnapshots.DataSource = $null
+        return
+    }
+
+    $dataTable = New-Object System.Data.DataTable
+    [void]$dataTable.Columns.Add("Node", [string])
+    [void]$dataTable.Columns.Add("VM Name", [string])
+    [void]$dataTable.Columns.Add("Snapshot Name", [string])
+    [void]$dataTable.Columns.Add("Creation Time", [string])
+    [void]$dataTable.Columns.Add("Age", [string])
+    [void]$dataTable.Columns.Add("Age (Days)", [double])
+
+    foreach ($snapshot in $script:filteredSnapshots) {
+        [void]$dataTable.Rows.Add(
+            $snapshot.Node,
+            $snapshot.VMName,
+            $snapshot.SnapshotName,
+            $snapshot.CreationTime.ToString("yyyy-MM-dd HH:mm:ss"),
+            $snapshot.Age,
+            $snapshot.AgeDays
+        )
+    }
+
+    $dataGridSnapshots.DataSource = $dataTable
+
+    $oldSnapshots = ($script:filteredSnapshots | Where-Object { $_.AgeDays -gt 7 }).Count
+    $labelSummary.Text = "Showing $($script:filteredSnapshots.Count) of $($script:allSnapshots.Count) snapshots | Older than 7 days: $oldSnapshots"
+
+    $buttonDelete.Enabled = $true
+    $buttonSelectAll.Enabled = $true
+    $buttonDeselectAll.Enabled = $true
+}
+
+# Load server management data
+function Load-ServerManagementData {
+    if ($script:serverInfo.Count -eq 0) {
+        Update-Status -StatusLabel $labelStatus -Message "Loading server information..." -Color "Blue"
+        Get-ServerInformation
+        return
+    }
+
+    $script:filteredServerInfo = $script:serverInfo
+    Refresh-ServerGrid
     Update-Status -StatusLabel $labelStatus -Message "Loaded information for $($script:serverInfo.Count) VMs" -Color "Green"
 }
 
-# Function to load snapshot management data
+# Load snapshot management data
 function Load-SnapshotManagementData {
-    $listBoxVMs.Items.Clear()
-    foreach ($vmData in $script:allVMs) {
-        [void]$listBoxVMs.Items.Add($vmData.DisplayName)
-    }
+    $script:filteredVMs = $script:allVMs
+    Apply-VMListFilters
 
     if ($script:allSnapshots.Count -eq 0) {
         Update-Status -StatusLabel $labelStatus -Message "No snapshots found" -Color "Green"
@@ -184,41 +335,15 @@ function Load-SnapshotManagementData {
         $buttonSelectAll.Enabled = $false
         $buttonDeselectAll.Enabled = $false
         $dataGridSnapshots.DataSource = $null
-    } else {
-        $dataTable = New-Object System.Data.DataTable
-        [void]$dataTable.Columns.Add("Node", [string])
-        [void]$dataTable.Columns.Add("VM Name", [string])
-        [void]$dataTable.Columns.Add("Snapshot Name", [string])
-        [void]$dataTable.Columns.Add("Creation Time", [string])
-        [void]$dataTable.Columns.Add("Age", [string])
-        [void]$dataTable.Columns.Add("Age (Days)", [double])
-
-        foreach ($snapshot in $script:allSnapshots) {
-            [void]$dataTable.Rows.Add(
-                $snapshot.Node,
-                $snapshot.VMName,
-                $snapshot.SnapshotName,
-                $snapshot.CreationTime.ToString("yyyy-MM-dd HH:mm:ss"),
-                $snapshot.Age,
-                $snapshot.AgeDays
-            )
-        }
-
-        $dataGridSnapshots.DataSource = $dataTable
-
-        $oldSnapshots = ($script:allSnapshots | Where-Object { $_.AgeDays -gt 7 }).Count
-        $totalSize = $script:allSnapshots.Count
-
-        Update-Status -StatusLabel $labelStatus -Message "Loaded $totalSize snapshots from $($script:allVMs.Count) VMs" -Color "Green"
-        $labelSummary.Text = "Total: $totalSize snapshots | Older than 7 days: $oldSnapshots"
-
-        $buttonDelete.Enabled = $true
-        $buttonSelectAll.Enabled = $true
-        $buttonDeselectAll.Enabled = $true
+        return
     }
+
+    $script:filteredSnapshots = $script:allSnapshots
+    Refresh-SnapshotGrid
+    Update-Status -StatusLabel $labelStatus -Message "Loaded $($script:allSnapshots.Count) snapshots from $($script:allVMs.Count) VMs" -Color "Green"
 }
 
-# Function to get server information in background
+# Get server information in background
 function Get-ServerInformation {
     Update-Status -StatusLabel $labelStatus -Message "Gathering server information in background..." -Color "Blue"
     $buttonRefreshServer.Enabled = $false
@@ -241,6 +366,7 @@ function Get-ServerInformation {
             try {
                 $script:serverInfo = $script:powerShell.EndInvoke($script:runspace)
                 $buttonRefreshServer.Enabled = $true
+                $script:filteredServerInfo = $script:serverInfo
                 Load-ServerManagementData
             }
             catch {
@@ -261,7 +387,7 @@ function Get-ServerInformation {
     $localTimer.Start()
 }
 
-# Function to refresh snapshot data
+# Refresh snapshot data
 function Refresh-SnapshotData {
     if ($script:allVMs.Count -eq 0) { return }
 
@@ -287,6 +413,7 @@ function Refresh-SnapshotData {
             try {
                 $script:allSnapshots = $script:powerShell.EndInvoke($script:runspace)
                 $buttonRefreshSnapshot.Enabled = $true
+                $script:filteredSnapshots = $script:allSnapshots
                 Load-SnapshotManagementData
             }
             catch {
@@ -307,7 +434,106 @@ function Refresh-SnapshotData {
     $localTimer.Start()
 }
 
-# Connect button click event
+# Placeholder text management for search boxes
+$textBoxSearchServer.Add_GotFocus({
+    if ($textBoxSearchServer.Text -eq '🔍 Search VMs...') {
+        $textBoxSearchServer.Text = ''
+        $textBoxSearchServer.ForeColor = [System.Drawing.Color]::Black
+    }
+})
+$textBoxSearchServer.Add_LostFocus({
+    if ([string]::IsNullOrWhiteSpace($textBoxSearchServer.Text)) {
+        $textBoxSearchServer.Text = '🔍 Search VMs...'
+        $textBoxSearchServer.ForeColor = [System.Drawing.Color]::Gray
+    }
+})
+$textBoxSearchServer.Add_TextChanged({ Apply-ServerFilters })
+
+$textBoxSearchVM.Add_GotFocus({
+    if ($textBoxSearchVM.Text -eq '🔍 Search VMs...') {
+        $textBoxSearchVM.Text = ''
+        $textBoxSearchVM.ForeColor = [System.Drawing.Color]::Black
+    }
+})
+$textBoxSearchVM.Add_LostFocus({
+    if ([string]::IsNullOrWhiteSpace($textBoxSearchVM.Text)) {
+        $textBoxSearchVM.Text = '🔍 Search VMs...'
+        $textBoxSearchVM.ForeColor = [System.Drawing.Color]::Gray
+    }
+})
+$textBoxSearchVM.Add_TextChanged({ Apply-VMListFilters })
+
+$textBoxSearchSnapshot.Add_GotFocus({
+    if ($textBoxSearchSnapshot.Text -eq '🔍 Search snapshots...') {
+        $textBoxSnapshot.Text = ''
+        $textBoxSearchSnapshot.ForeColor = [System.Drawing.Color]::Black
+    }
+})
+$textBoxSearchSnapshot.Add_LostFocus({
+    if ([string]::IsNullOrWhiteSpace($textBoxSearchSnapshot.Text)) {
+        $textBoxSearchSnapshot.Text = '🔍 Search snapshots...'
+        $textBoxSearchSnapshot.ForeColor = [System.Drawing.Color]::Gray
+    }
+})
+$textBoxSearchSnapshot.Add_TextChanged({ Apply-SnapshotFilters })
+
+# Filter change events
+$comboBoxFilterServer.Add_SelectedIndexChanged({ Apply-ServerFilters })
+$checkBoxFavoritesServer.Add_CheckedChanged({ Apply-ServerFilters })
+$comboBoxAgeFilter.Add_SelectedIndexChanged({ Apply-SnapshotFilters })
+
+# Context menu for server grid (favorites)
+$contextMenuServer = New-Object System.Windows.Forms.ContextMenuStrip
+$menuItemAddFav = New-Object System.Windows.Forms.ToolStripMenuItem
+$menuItemAddFav.Text = "⭐ Add to Favorites"
+$menuItemAddFav.Add_Click({
+    if ($dataGridServer.SelectedRows.Count -gt 0) {
+        $row = $dataGridServer.SelectedRows[0]
+        $node = $row.Cells["Node"].Value
+        $vmName = $row.Cells["VM Name"].Value
+        if (Add-Favorite -Node $node -VMName $vmName) {
+            [System.Windows.Forms.MessageBox]::Show("Added $vmName to favorites", "Success", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+            Apply-ServerFilters
+        }
+    }
+})
+$contextMenuServer.Items.Add($menuItemAddFav)
+
+$menuItemRemoveFav = New-Object System.Windows.Forms.ToolStripMenuItem
+$menuItemRemoveFav.Text = "Remove from Favorites"
+$menuItemRemoveFav.Add_Click({
+    if ($dataGridServer.SelectedRows.Count -gt 0) {
+        $row = $dataGridServer.SelectedRows[0]
+        $node = $row.Cells["Node"].Value
+        $vmName = $row.Cells["VM Name"].Value
+        Remove-Favorite -Node $node -VMName $vmName
+        [System.Windows.Forms.MessageBox]::Show("Removed $vmName from favorites", "Success", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+        Apply-ServerFilters
+    }
+})
+$contextMenuServer.Items.Add($menuItemRemoveFav)
+$dataGridServer.ContextMenuStrip = $contextMenuServer
+
+# Export buttons
+$buttonExportServer.Add_Click({
+    if ($dataGridServer.DataSource) {
+        $success = Export-ToCSV -DataTable $dataGridServer.DataSource -DefaultFileName "ServerInfo_$(Get-Date -Format 'yyyyMMdd_HHmmss').csv"
+        if ($success) {
+            [System.Windows.Forms.MessageBox]::Show("Data exported successfully!", "Export Complete", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+        }
+    }
+})
+
+$buttonExportSnapshot.Add_Click({
+    if ($dataGridSnapshots.DataSource) {
+        $success = Export-ToCSV -DataTable $dataGridSnapshots.DataSource -DefaultFileName "Snapshots_$(Get-Date -Format 'yyyyMMdd_HHmmss').csv"
+        if ($success) {
+            [System.Windows.Forms.MessageBox]::Show("Data exported successfully!", "Export Complete", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+        }
+    }
+})
+
+# Connect button
 $buttonConnect.Add_Click({
     $nodeInput = $textBoxNodes.Text.Trim()
 
@@ -348,12 +574,10 @@ $buttonConnect.Add_Click({
             Errors = @()
         }
 
-        # Get VMs from nodes
         $vmResult = Get-VMsFromNodes -Nodes $Nodes
         $result.VMs = $vmResult.VMs
         $result.Errors = $vmResult.Errors
 
-        # Get snapshots
         if ($result.VMs.Count -gt 0) {
             $result.Snapshots = Get-VMSnapshotsAsync -VMData $result.VMs
             $result.Success = $true
@@ -369,7 +593,7 @@ $buttonConnect.Add_Click({
     $timer.Start()
 })
 
-# Menu button click events
+# Menu navigation buttons
 $buttonServerMgmt.Add_Click({
     Write-Log "Navigating to Server Management" "INFO"
     Show-Panel "server"
@@ -396,7 +620,7 @@ $buttonRefreshSnapshot.Add_Click({
     Refresh-SnapshotData
 })
 
-# Delete button click event
+# Delete snapshot button
 $buttonDelete.Add_Click({
     $selectedRows = $dataGridSnapshots.SelectedRows
 
@@ -455,7 +679,6 @@ $buttonDelete.Add_Click({
             }
         }
 
-        # Send Teams notification
         if ($successCount -gt 0) {
             $snapshotDetails = $deletedSnapshots | ForEach-Object {
                 "- **$($_.Snapshot)** from VM **$($_.VM)** on node **$($_.Node)**"
