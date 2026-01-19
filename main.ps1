@@ -3,274 +3,98 @@
 
 <#
 .SYNOPSIS
-    Hyper-V VM Snapshot Management Tool
+    Hyper-V Server Management and Snapshot Tool
 .DESCRIPTION
-    A GUI tool to connect to Hyper-V hosts, view VMs, and manage VM snapshots
+    A comprehensive GUI tool to manage Hyper-V servers and VMs including:
+    - Server Management: View IP addresses, memory, and storage information
+    - Snapshot Management: View and delete VM snapshots
 .NOTES
     Author: Claude
-    Date: 2026-01-09
+    Date: 2026-01-19
+    Version: 2.0 (Modular)
 #>
 
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
-
-# Configuration
+# Get script path
 $scriptPath = if ($PSScriptRoot) { $PSScriptRoot } else { $PWD.Path }
-$script:LogFile = Join-Path $scriptPath "HyperV-SnapshotTool.log"
-$script:TeamsWebhookUrl = 'https://asapnet.webhook.office.com/webhookb2/e2cb2abf-e3ad-44a2-9ac2-fc75a3e69157@60922053-03d2-40e3-837a-5ca3fca7102b/IncomingWebhook/cf8d6f80c793446793387c866095bb6d/0fae63a6-c28c-4510-983e-92bc30465c6e/V25JJgAkleuQh2-QQcU88NJWNxOj4QcaRikzUgQZrp_qc1'
 
-# Logging function
-function Write-Log {
-    param(
-        [string]$Message,
-        [ValidateSet('INFO', 'WARNING', 'ERROR', 'SUCCESS')]
-        [string]$Level = 'INFO'
-    )
+# Import modules
+Import-Module (Join-Path $scriptPath "Modules\Common.psm1") -Force
+Import-Module (Join-Path $scriptPath "Modules\ServerManagement.psm1") -Force
+Import-Module (Join-Path $scriptPath "Modules\SnapshotManagement.psm1") -Force
+Import-Module (Join-Path $scriptPath "Modules\UIComponents.psm1") -Force
 
-    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $logMessage = "[$timestamp] [$Level] $Message"
+# Initialize logging
+Initialize-LogFile -ScriptPath $scriptPath
 
-    try {
-        Add-Content -Path $script:LogFile -Value $logMessage -ErrorAction Stop
-    }
-    catch {
-        Write-Warning "Failed to write to log file: $($_.Exception.Message)"
-    }
-}
-
-# Teams webhook notification function
-function Send-TeamsNotification {
-    param(
-        [string]$Title,
-        [string]$Message,
-        [string]$Color = "00FF00"  # Green by default
-    )
-
-    try {
-        $body = @{
-            "@type" = "MessageCard"
-            "@context" = "https://schema.org/extensions"
-            "summary" = $Title
-            "themeColor" = $Color
-            "title" = $Title
-            "text" = $Message
-        } | ConvertTo-Json
-
-        Invoke-RestMethod -Uri $script:TeamsWebhookUrl -Method Post -Body $body -ContentType 'application/json' -ErrorAction Stop
-        Write-Log "Teams notification sent: $Title" "INFO"
-    }
-    catch {
-        Write-Log "Failed to send Teams notification: $($_.Exception.Message)" "ERROR"
-    }
-}
-
-# Create the main form
-$form = New-Object System.Windows.Forms.Form
-$form.Text = 'Hyper-V Snapshot Management Tool'
-$form.Size = New-Object System.Drawing.Size(1200, 700)
-$form.StartPosition = 'CenterScreen'
-$form.MinimumSize = New-Object System.Drawing.Size(1000, 600)
-
-# Create labels and controls
-$labelNodes = New-Object System.Windows.Forms.Label
-$labelNodes.Location = New-Object System.Drawing.Point(10, 15)
-$labelNodes.Size = New-Object System.Drawing.Size(150, 20)
-$labelNodes.Text = 'Hyper-V Nodes:'
-$form.Controls.Add($labelNodes)
-
-# TextBox for Hyper-V nodes
-$textBoxNodes = New-Object System.Windows.Forms.TextBox
-$textBoxNodes.Location = New-Object System.Drawing.Point(160, 12)
-$textBoxNodes.Size = New-Object System.Drawing.Size(400, 20)
-$textBoxNodes.Text = 'localhost'
-$form.Controls.Add($textBoxNodes)
-
-# Help label
-$labelHelp = New-Object System.Windows.Forms.Label
-$labelHelp.Location = New-Object System.Drawing.Point(570, 15)
-$labelHelp.Size = New-Object System.Drawing.Size(300, 20)
-$labelHelp.Text = '(comma-separated for multiple nodes)'
-$labelHelp.ForeColor = [System.Drawing.Color]::Gray
-$form.Controls.Add($labelHelp)
-
-# Connect button
-$buttonConnect = New-Object System.Windows.Forms.Button
-$buttonConnect.Location = New-Object System.Drawing.Point(880, 10)
-$buttonConnect.Size = New-Object System.Drawing.Size(100, 25)
-$buttonConnect.Text = 'Connect'
-$form.Controls.Add($buttonConnect)
-
-# Refresh button
-$buttonRefresh = New-Object System.Windows.Forms.Button
-$buttonRefresh.Location = New-Object System.Drawing.Point(990, 10)
-$buttonRefresh.Size = New-Object System.Drawing.Size(100, 25)
-$buttonRefresh.Text = 'Refresh'
-$buttonRefresh.Enabled = $false
-$form.Controls.Add($buttonRefresh)
-
-# Status label
-$labelStatus = New-Object System.Windows.Forms.Label
-$labelStatus.Location = New-Object System.Drawing.Point(10, 45)
-$labelStatus.Size = New-Object System.Drawing.Size(1100, 20)
-$labelStatus.Text = 'Enter Hyper-V node(s) and click Connect'
-$labelStatus.ForeColor = [System.Drawing.Color]::Blue
-$form.Controls.Add($labelStatus)
-
-# VM ListBox
-$labelVMs = New-Object System.Windows.Forms.Label
-$labelVMs.Location = New-Object System.Drawing.Point(10, 75)
-$labelVMs.Size = New-Object System.Drawing.Size(200, 20)
-$labelVMs.Text = 'Virtual Machines:'
-$form.Controls.Add($labelVMs)
-
-$listBoxVMs = New-Object System.Windows.Forms.ListBox
-$listBoxVMs.Location = New-Object System.Drawing.Point(10, 100)
-$listBoxVMs.Size = New-Object System.Drawing.Size(300, 500)
-$listBoxVMs.SelectionMode = 'MultiExtended'
-$form.Controls.Add($listBoxVMs)
-
-# Snapshots DataGridView
-$labelSnapshots = New-Object System.Windows.Forms.Label
-$labelSnapshots.Location = New-Object System.Drawing.Point(320, 75)
-$labelSnapshots.Size = New-Object System.Drawing.Size(200, 20)
-$labelSnapshots.Text = 'VM Snapshots:'
-$form.Controls.Add($labelSnapshots)
-
-$dataGridSnapshots = New-Object System.Windows.Forms.DataGridView
-$dataGridSnapshots.Location = New-Object System.Drawing.Point(320, 100)
-$dataGridSnapshots.Size = New-Object System.Drawing.Size(860, 450)
-$dataGridSnapshots.AllowUserToAddRows = $false
-$dataGridSnapshots.AllowUserToDeleteRows = $false
-$dataGridSnapshots.ReadOnly = $true
-$dataGridSnapshots.SelectionMode = 'FullRowSelect'
-$dataGridSnapshots.MultiSelect = $true
-$dataGridSnapshots.AutoSizeColumnsMode = 'Fill'
-$form.Controls.Add($dataGridSnapshots)
-
-# Delete button
-$buttonDelete = New-Object System.Windows.Forms.Button
-$buttonDelete.Location = New-Object System.Drawing.Point(320, 560)
-$buttonDelete.Size = New-Object System.Drawing.Size(150, 30)
-$buttonDelete.Text = 'Delete Selected'
-$buttonDelete.Enabled = $false
-$buttonDelete.BackColor = [System.Drawing.Color]::IndianRed
-$buttonDelete.ForeColor = [System.Drawing.Color]::White
-$form.Controls.Add($buttonDelete)
-
-# Select All button
-$buttonSelectAll = New-Object System.Windows.Forms.Button
-$buttonSelectAll.Location = New-Object System.Drawing.Point(480, 560)
-$buttonSelectAll.Size = New-Object System.Drawing.Size(100, 30)
-$buttonSelectAll.Text = 'Select All'
-$buttonSelectAll.Enabled = $false
-$form.Controls.Add($buttonSelectAll)
-
-# Deselect All button
-$buttonDeselectAll = New-Object System.Windows.Forms.Button
-$buttonDeselectAll.Location = New-Object System.Drawing.Point(590, 560)
-$buttonDeselectAll.Size = New-Object System.Drawing.Size(100, 30)
-$buttonDeselectAll.Text = 'Deselect All'
-$buttonDeselectAll.Enabled = $false
-$form.Controls.Add($buttonDeselectAll)
-
-# Summary label
-$labelSummary = New-Object System.Windows.Forms.Label
-$labelSummary.Location = New-Object System.Drawing.Point(320, 600)
-$labelSummary.Size = New-Object System.Drawing.Size(860, 50)
-$labelSummary.Text = ''
-$form.Controls.Add($labelSummary)
-
-# Global variables to store data
+# Global variables
 $script:hyperVNodes = @()
 $script:allVMs = @()
 $script:allSnapshots = @()
+$script:serverInfo = @()
 $script:runspace = $null
 $script:powerShell = $null
+$script:currentView = "menu"
 
-# Initialize log file
-Write-Log "Hyper-V Snapshot Management Tool started" "INFO"
+# Create the main form and panels
+$form = New-MainForm
+$panelConnection = New-ConnectionPanel -Form $form
+$panelMenu = New-MenuPanel
+$panelServer = New-ServerManagementPanel
+$panelSnapshot = New-SnapshotManagementPanel
 
-# Create Timer for checking background operations
+$form.Controls.Add($panelConnection)
+$form.Controls.Add($panelMenu)
+$form.Controls.Add($panelServer)
+$form.Controls.Add($panelSnapshot)
+
+# Get references to controls
+$textBoxNodes = Find-ControlByName -Parent $form -Name 'textBoxNodes'
+$buttonConnect = Find-ControlByName -Parent $form -Name 'buttonConnect'
+$buttonBackToMenu = Find-ControlByName -Parent $form -Name 'buttonBackToMenu'
+$labelStatus = Find-ControlByName -Parent $form -Name 'labelStatus'
+$buttonServerMgmt = Find-ControlByName -Parent $form -Name 'buttonServerMgmt'
+$buttonSnapshotMgmt = Find-ControlByName -Parent $form -Name 'buttonSnapshotMgmt'
+$buttonRefreshServer = Find-ControlByName -Parent $form -Name 'buttonRefreshServer'
+$buttonRefreshSnapshot = Find-ControlByName -Parent $form -Name 'buttonRefreshSnapshot'
+$dataGridServer = Find-ControlByName -Parent $form -Name 'dataGridServer'
+$dataGridSnapshots = Find-ControlByName -Parent $form -Name 'dataGridSnapshots'
+$listBoxVMs = Find-ControlByName -Parent $form -Name 'listBoxVMs'
+$buttonDelete = Find-ControlByName -Parent $form -Name 'buttonDelete'
+$buttonSelectAll = Find-ControlByName -Parent $form -Name 'buttonSelectAll'
+$buttonDeselectAll = Find-ControlByName -Parent $form -Name 'buttonDeselectAll'
+$labelSummary = Find-ControlByName -Parent $form -Name 'labelSummary'
+
+# Timer for background operations
 $timer = New-Object System.Windows.Forms.Timer
-$timer.Interval = 500  # Check every 500ms
+$timer.Interval = 500
 $timer.Add_Tick({
     if ($script:powerShell -ne $null -and $script:powerShell.InvocationStateInfo.State -eq 'Completed') {
         try {
-            # Get results
             $result = $script:powerShell.EndInvoke($script:runspace)
-
-            # Re-enable buttons
             $buttonConnect.Enabled = $true
-            $buttonRefresh.Enabled = $true
 
             if ($result -and $result.Success) {
                 $script:allVMs = $result.VMs
                 $script:allSnapshots = $result.Snapshots
+                $script:serverInfo = $result.ServerInfo
 
                 Write-Log "Successfully loaded $($script:allVMs.Count) VMs and $($script:allSnapshots.Count) snapshots" "SUCCESS"
 
-                # Populate VM list
-                $listBoxVMs.Items.Clear()
-                foreach ($vmData in $script:allVMs) {
-                    [void]$listBoxVMs.Items.Add($vmData.DisplayName)
-                }
+                $buttonServerMgmt.Enabled = $true
+                $buttonSnapshotMgmt.Enabled = $true
+                $buttonBackToMenu.Enabled = $true
 
-                # Populate snapshots
-                if ($script:allSnapshots.Count -eq 0) {
-                    Update-Status "No snapshots found" "Green"
-                    $labelSummary.Text = "Total: 0 snapshots"
-                    $buttonDelete.Enabled = $false
-                    $buttonSelectAll.Enabled = $false
-                    $buttonDeselectAll.Enabled = $false
-                    $dataGridSnapshots.DataSource = $null
-                    Write-Log "No snapshots found on any VMs" "INFO"
-                } else {
-                    # Create DataTable for display
-                    $dataTable = New-Object System.Data.DataTable
-                    [void]$dataTable.Columns.Add("Node", [string])
-                    [void]$dataTable.Columns.Add("VM Name", [string])
-                    [void]$dataTable.Columns.Add("Snapshot Name", [string])
-                    [void]$dataTable.Columns.Add("Creation Time", [string])
-                    [void]$dataTable.Columns.Add("Age", [string])
-                    [void]$dataTable.Columns.Add("Age (Days)", [double])
-
-                    foreach ($snapshot in $script:allSnapshots) {
-                        [void]$dataTable.Rows.Add(
-                            $snapshot.Node,
-                            $snapshot.VMName,
-                            $snapshot.SnapshotName,
-                            $snapshot.CreationTime.ToString("yyyy-MM-dd HH:mm:ss"),
-                            $snapshot.Age,
-                            $snapshot.AgeDays
-                        )
-                    }
-
-                    $dataGridSnapshots.DataSource = $dataTable
-
-                    # Calculate statistics
-                    $oldSnapshots = ($script:allSnapshots | Where-Object { $_.AgeDays -gt 7 }).Count
-                    $totalSize = $script:allSnapshots.Count
-
-                    Update-Status "Loaded $totalSize snapshots from $($script:allVMs.Count) VMs" "Green"
-                    $labelSummary.Text = "Total: $totalSize snapshots | Older than 7 days: $oldSnapshots"
-
-                    $buttonDelete.Enabled = $true
-                    $buttonSelectAll.Enabled = $true
-                    $buttonDeselectAll.Enabled = $true
-                }
+                Update-Status -StatusLabel $labelStatus -Message "Connected successfully to $($script:hyperVNodes.Count) node(s) - $($script:allVMs.Count) VMs found" -Color "Green"
             }
             else {
-                Update-Status "Failed to load data" "Red"
-                $buttonRefresh.Enabled = $false
+                Update-Status -StatusLabel $labelStatus -Message "Failed to load data" -Color "Red"
             }
         }
         catch {
-            Update-Status "Error processing results: $($_.Exception.Message)" "Red"
+            Update-Status -StatusLabel $labelStatus -Message "Error processing results: $($_.Exception.Message)" -Color "Red"
             $buttonConnect.Enabled = $true
-            $buttonRefresh.Enabled = $false
         }
         finally {
-            # Cleanup
             if ($script:powerShell -ne $null) {
                 $script:powerShell.Dispose()
                 $script:powerShell = $null
@@ -281,127 +105,86 @@ $timer.Add_Tick({
     }
 })
 
-# Function to update status
-function Update-Status {
-    param([string]$Message, [string]$Color = 'Blue')
-    $labelStatus.Text = $Message
-    $labelStatus.ForeColor = [System.Drawing.Color]::FromName($Color)
-    $form.Refresh()
-}
+# Function to show specific panel
+function Show-Panel {
+    param([string]$PanelName)
 
-# Function to get all VMs from nodes
-function Get-AllVMs {
-    param([array]$Nodes)
+    $panelMenu.Visible = $false
+    $panelServer.Visible = $false
+    $panelSnapshot.Visible = $false
 
-    $allVMs = @()
-
-    foreach ($node in $Nodes) {
-        try {
-            Update-Status "Connecting to $node..." "Blue"
-
-            if ($node -eq 'localhost' -or $node -eq $env:COMPUTERNAME) {
-                $vms = Get-VM -ErrorAction Stop
-            } else {
-                $vms = Get-VM -ComputerName $node -ErrorAction Stop
-            }
-
-            foreach ($vm in $vms) {
-                $allVMs += [PSCustomObject]@{
-                    Node = $node
-                    VM = $vm
-                    Name = $vm.Name
-                    State = $vm.State
-                    DisplayName = "$($vm.Name) [$($vm.State)] - $node"
-                }
-            }
-
-            Update-Status "Successfully connected to $node - Found $($vms.Count) VMs" "Green"
+    switch ($PanelName) {
+        "menu" {
+            $panelMenu.Visible = $true
+            $script:currentView = "menu"
         }
-        catch {
-            Update-Status "Error connecting to ${node}: $($_.Exception.Message)" "Red"
-            [System.Windows.Forms.MessageBox]::Show(
-                "Failed to connect to ${node}:`n$($_.Exception.Message)",
-                "Connection Error",
-                [System.Windows.Forms.MessageBoxButtons]::OK,
-                [System.Windows.Forms.MessageBoxIcon]::Error
-            )
+        "server" {
+            $panelServer.Visible = $true
+            $script:currentView = "server"
+            Load-ServerManagementData
+        }
+        "snapshot" {
+            $panelSnapshot.Visible = $true
+            $script:currentView = "snapshot"
+            Load-SnapshotManagementData
         }
     }
-
-    return $allVMs
 }
 
-# Function to get all snapshots
-function Get-AllSnapshots {
-    param([array]$VMData)
-
-    $allSnapshots = @()
-    $totalSnapshots = 0
-
-    foreach ($vmData in $VMData) {
-        try {
-            $node = $vmData.Node
-            $vm = $vmData.VM
-
-            if ($node -eq 'localhost' -or $node -eq $env:COMPUTERNAME) {
-                $snapshots = Get-VMSnapshot -VM $vm -ErrorAction Stop
-            } else {
-                $snapshots = Get-VMSnapshot -VMName $vm.Name -ComputerName $node -ErrorAction Stop
-            }
-
-            foreach ($snapshot in $snapshots) {
-                $age = (Get-Date) - $snapshot.CreationTime
-                $ageText = ""
-
-                if ($age.TotalDays -ge 1) {
-                    $ageText = "{0} days, {1} hours" -f [Math]::Floor($age.TotalDays), $age.Hours
-                } elseif ($age.TotalHours -ge 1) {
-                    $ageText = "{0} hours, {1} minutes" -f [Math]::Floor($age.TotalHours), $age.Minutes
-                } else {
-                    $ageText = "{0} minutes" -f [Math]::Floor($age.TotalMinutes)
-                }
-
-                $allSnapshots += [PSCustomObject]@{
-                    Node = $node
-                    VMName = $vm.Name
-                    SnapshotName = $snapshot.Name
-                    CreationTime = $snapshot.CreationTime
-                    Age = $ageText
-                    AgeDays = [Math]::Round($age.TotalDays, 2)
-                    Snapshot = $snapshot
-                }
-
-                $totalSnapshots++
-            }
-        }
-        catch {
-            Write-Warning "Error getting snapshots for $($vm.Name): $($_.Exception.Message)"
-        }
-    }
-
-    return $allSnapshots
-}
-
-# Function to refresh snapshot data
-function Refresh-SnapshotData {
-    if ($script:allVMs.Count -eq 0) {
+# Function to load server management data
+function Load-ServerManagementData {
+    if ($script:serverInfo.Count -eq 0) {
+        Update-Status -StatusLabel $labelStatus -Message "Loading server information..." -Color "Blue"
+        Get-ServerInformation
         return
     }
 
-    Update-Status "Loading snapshots..." "Blue"
-    $dataGridSnapshots.DataSource = $null
+    $dataTable = New-Object System.Data.DataTable
+    [void]$dataTable.Columns.Add("Node", [string])
+    [void]$dataTable.Columns.Add("VM Name", [string])
+    [void]$dataTable.Columns.Add("State", [string])
+    [void]$dataTable.Columns.Add("IP Addresses", [string])
+    [void]$dataTable.Columns.Add("Memory Total (GB)", [string])
+    [void]$dataTable.Columns.Add("Memory Used (GB)", [string])
+    [void]$dataTable.Columns.Add("Memory Available (GB)", [string])
+    [void]$dataTable.Columns.Add("CPU Count", [string])
+    [void]$dataTable.Columns.Add("Disk Size (GB)", [string])
+    [void]$dataTable.Columns.Add("Disk Used (GB)", [string])
 
-    # Get snapshots for all VMs
-    $script:allSnapshots = Get-AllSnapshots -VMData $script:allVMs
+    foreach ($server in $script:serverInfo) {
+        [void]$dataTable.Rows.Add(
+            $server.Node,
+            $server.VMName,
+            $server.State,
+            $server.IPAddresses,
+            $server.MemoryTotalGB,
+            $server.MemoryUsedGB,
+            $server.MemoryAvailableGB,
+            $server.ProcessorCount,
+            $server.DiskSizeGB,
+            $server.DiskUsedGB
+        )
+    }
+
+    $dataGridServer.DataSource = $dataTable
+    Update-Status -StatusLabel $labelStatus -Message "Loaded information for $($script:serverInfo.Count) VMs" -Color "Green"
+}
+
+# Function to load snapshot management data
+function Load-SnapshotManagementData {
+    $listBoxVMs.Items.Clear()
+    foreach ($vmData in $script:allVMs) {
+        [void]$listBoxVMs.Items.Add($vmData.DisplayName)
+    }
 
     if ($script:allSnapshots.Count -eq 0) {
-        Update-Status "No snapshots found" "Green"
+        Update-Status -StatusLabel $labelStatus -Message "No snapshots found" -Color "Green"
         $labelSummary.Text = "Total: 0 snapshots"
         $buttonDelete.Enabled = $false
         $buttonSelectAll.Enabled = $false
         $buttonDeselectAll.Enabled = $false
+        $dataGridSnapshots.DataSource = $null
     } else {
-        # Create DataTable for display
         $dataTable = New-Object System.Data.DataTable
         [void]$dataTable.Columns.Add("Node", [string])
         [void]$dataTable.Columns.Add("VM Name", [string])
@@ -423,17 +206,105 @@ function Refresh-SnapshotData {
 
         $dataGridSnapshots.DataSource = $dataTable
 
-        # Calculate statistics
         $oldSnapshots = ($script:allSnapshots | Where-Object { $_.AgeDays -gt 7 }).Count
         $totalSize = $script:allSnapshots.Count
 
-        Update-Status "Loaded $totalSize snapshots" "Green"
+        Update-Status -StatusLabel $labelStatus -Message "Loaded $totalSize snapshots from $($script:allVMs.Count) VMs" -Color "Green"
         $labelSummary.Text = "Total: $totalSize snapshots | Older than 7 days: $oldSnapshots"
 
         $buttonDelete.Enabled = $true
         $buttonSelectAll.Enabled = $true
         $buttonDeselectAll.Enabled = $true
     }
+}
+
+# Function to get server information in background
+function Get-ServerInformation {
+    Update-Status -StatusLabel $labelStatus -Message "Gathering server information in background..." -Color "Blue"
+    $buttonRefreshServer.Enabled = $false
+
+    $script:powerShell = [PowerShell]::Create()
+    [void]$script:powerShell.AddScript({
+        param($VMData, $ModulePath)
+        Import-Module $ModulePath -Force
+        return Get-ServerInformationAsync -VMData $VMData
+    })
+    [void]$script:powerShell.AddArgument($script:allVMs)
+    [void]$script:powerShell.AddArgument((Join-Path $scriptPath "Modules\ServerManagement.psm1"))
+
+    $script:runspace = $script:powerShell.BeginInvoke()
+
+    $localTimer = New-Object System.Windows.Forms.Timer
+    $localTimer.Interval = 500
+    $localTimer.Add_Tick({
+        if ($script:powerShell -ne $null -and $script:powerShell.InvocationStateInfo.State -eq 'Completed') {
+            try {
+                $script:serverInfo = $script:powerShell.EndInvoke($script:runspace)
+                $buttonRefreshServer.Enabled = $true
+                Load-ServerManagementData
+            }
+            catch {
+                Update-Status -StatusLabel $labelStatus -Message "Error loading server information: $($_.Exception.Message)" -Color "Red"
+                $buttonRefreshServer.Enabled = $true
+            }
+            finally {
+                if ($script:powerShell -ne $null) {
+                    $script:powerShell.Dispose()
+                    $script:powerShell = $null
+                }
+                $script:runspace = $null
+                $localTimer.Stop()
+                $localTimer.Dispose()
+            }
+        }
+    })
+    $localTimer.Start()
+}
+
+# Function to refresh snapshot data
+function Refresh-SnapshotData {
+    if ($script:allVMs.Count -eq 0) { return }
+
+    Update-Status -StatusLabel $labelStatus -Message "Loading snapshots..." -Color "Blue"
+    $dataGridSnapshots.DataSource = $null
+    $buttonRefreshSnapshot.Enabled = $false
+
+    $script:powerShell = [PowerShell]::Create()
+    [void]$script:powerShell.AddScript({
+        param($VMData, $ModulePath)
+        Import-Module $ModulePath -Force
+        return Get-VMSnapshotsAsync -VMData $VMData
+    })
+    [void]$script:powerShell.AddArgument($script:allVMs)
+    [void]$script:powerShell.AddArgument((Join-Path $scriptPath "Modules\SnapshotManagement.psm1"))
+
+    $script:runspace = $script:powerShell.BeginInvoke()
+
+    $localTimer = New-Object System.Windows.Forms.Timer
+    $localTimer.Interval = 500
+    $localTimer.Add_Tick({
+        if ($script:powerShell -ne $null -and $script:powerShell.InvocationStateInfo.State -eq 'Completed') {
+            try {
+                $script:allSnapshots = $script:powerShell.EndInvoke($script:runspace)
+                $buttonRefreshSnapshot.Enabled = $true
+                Load-SnapshotManagementData
+            }
+            catch {
+                Update-Status -StatusLabel $labelStatus -Message "Error loading snapshots: $($_.Exception.Message)" -Color "Red"
+                $buttonRefreshSnapshot.Enabled = $true
+            }
+            finally {
+                if ($script:powerShell -ne $null) {
+                    $script:powerShell.Dispose()
+                    $script:powerShell = $null
+                }
+                $script:runspace = $null
+                $localTimer.Stop()
+                $localTimer.Dispose()
+            }
+        }
+    })
+    $localTimer.Start()
 }
 
 # Connect button click event
@@ -450,196 +321,79 @@ $buttonConnect.Add_Click({
         return
     }
 
-    # Parse nodes
     $script:hyperVNodes = $nodeInput -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' }
-
     Write-Log "Connecting to nodes: $($script:hyperVNodes -join ', ')" "INFO"
-    Update-Status "Connecting to nodes in background..." "Blue"
+    Update-Status -StatusLabel $labelStatus -Message "Connecting to nodes in background..." -Color "Blue"
 
-    # Clear existing data
-    $listBoxVMs.Items.Clear()
-    $dataGridSnapshots.DataSource = $null
     $script:allVMs = @()
     $script:allSnapshots = @()
+    $script:serverInfo = @()
 
-    # Disable buttons during processing
     $buttonConnect.Enabled = $false
-    $buttonRefresh.Enabled = $false
+    $buttonServerMgmt.Enabled = $false
+    $buttonSnapshotMgmt.Enabled = $false
 
-    # Create runspace for background operation
     $script:powerShell = [PowerShell]::Create()
     [void]$script:powerShell.AddScript({
-        param($Nodes)
+        param($Nodes, $ServerModulePath, $SnapshotModulePath)
+
+        Import-Module $ServerModulePath -Force
+        Import-Module $SnapshotModulePath -Force
 
         $result = @{
             Success = $false
             VMs = @()
             Snapshots = @()
+            ServerInfo = @()
             Errors = @()
         }
 
-        # Get all VMs
-        $allVMs = @()
-        foreach ($node in $Nodes) {
-            try {
-                if ($node -eq 'localhost' -or $node -eq $env:COMPUTERNAME) {
-                    $vms = Get-VM -ErrorAction Stop
-                } else {
-                    $vms = Get-VM -ComputerName $node -ErrorAction Stop
-                }
+        # Get VMs from nodes
+        $vmResult = Get-VMsFromNodes -Nodes $Nodes
+        $result.VMs = $vmResult.VMs
+        $result.Errors = $vmResult.Errors
 
-                foreach ($vm in $vms) {
-                    $allVMs += [PSCustomObject]@{
-                        Node = $node
-                        VM = $vm
-                        Name = $vm.Name
-                        State = $vm.State
-                        DisplayName = "$($vm.Name) [$($vm.State)] - $node"
-                    }
-                }
-            }
-            catch {
-                $result.Errors += "Error connecting to ${node}: $($_.Exception.Message)"
-            }
-        }
-
-        $result.VMs = $allVMs
-
-        # Get all snapshots
-        if ($allVMs.Count -gt 0) {
-            $allSnapshots = @()
-            foreach ($vmData in $allVMs) {
-                try {
-                    $node = $vmData.Node
-                    $vm = $vmData.VM
-
-                    if ($node -eq 'localhost' -or $node -eq $env:COMPUTERNAME) {
-                        $snapshots = Get-VMSnapshot -VM $vm -ErrorAction Stop
-                    } else {
-                        $snapshots = Get-VMSnapshot -VMName $vm.Name -ComputerName $node -ErrorAction Stop
-                    }
-
-                    foreach ($snapshot in $snapshots) {
-                        $age = (Get-Date) - $snapshot.CreationTime
-                        $ageText = ""
-
-                        if ($age.TotalDays -ge 1) {
-                            $ageText = "{0} days, {1} hours" -f [Math]::Floor($age.TotalDays), $age.Hours
-                        } elseif ($age.TotalHours -ge 1) {
-                            $ageText = "{0} hours, {1} minutes" -f [Math]::Floor($age.TotalHours), $age.Minutes
-                        } else {
-                            $ageText = "{0} minutes" -f [Math]::Floor($age.TotalMinutes)
-                        }
-
-                        $allSnapshots += [PSCustomObject]@{
-                            Node = $node
-                            VMName = $vm.Name
-                            SnapshotName = $snapshot.Name
-                            CreationTime = $snapshot.CreationTime
-                            Age = $ageText
-                            AgeDays = [Math]::Round($age.TotalDays, 2)
-                            Snapshot = $snapshot
-                        }
-                    }
-                }
-                catch {
-                    $result.Errors += "Error getting snapshots for $($vmData.Name): $($_.Exception.Message)"
-                }
-            }
-
-            $result.Snapshots = $allSnapshots
+        # Get snapshots
+        if ($result.VMs.Count -gt 0) {
+            $result.Snapshots = Get-VMSnapshotsAsync -VMData $result.VMs
             $result.Success = $true
         }
 
         return $result
     })
     [void]$script:powerShell.AddArgument($script:hyperVNodes)
+    [void]$script:powerShell.AddArgument((Join-Path $scriptPath "Modules\ServerManagement.psm1"))
+    [void]$script:powerShell.AddArgument((Join-Path $scriptPath "Modules\SnapshotManagement.psm1"))
 
-    # Start async execution
     $script:runspace = $script:powerShell.BeginInvoke()
-
-    # Start timer to check completion
     $timer.Start()
 })
 
-# Refresh button click event
-$buttonRefresh.Add_Click({
-    if ($script:allVMs.Count -eq 0) {
-        return
-    }
+# Menu button click events
+$buttonServerMgmt.Add_Click({
+    Write-Log "Navigating to Server Management" "INFO"
+    Show-Panel "server"
+})
 
+$buttonSnapshotMgmt.Add_Click({
+    Write-Log "Navigating to Snapshot Management" "INFO"
+    Show-Panel "snapshot"
+})
+
+$buttonBackToMenu.Add_Click({
+    Write-Log "Returning to main menu" "INFO"
+    Show-Panel "menu"
+})
+
+# Refresh buttons
+$buttonRefreshServer.Add_Click({
+    Write-Log "Refreshing server information" "INFO"
+    Get-ServerInformation
+})
+
+$buttonRefreshSnapshot.Add_Click({
     Write-Log "Refreshing snapshot data" "INFO"
-    Update-Status "Refreshing snapshots in background..." "Blue"
-    $dataGridSnapshots.DataSource = $null
-
-    # Disable buttons during processing
-    $buttonConnect.Enabled = $false
-    $buttonRefresh.Enabled = $false
-
-    # Create runspace for background operation
-    $script:powerShell = [PowerShell]::Create()
-    [void]$script:powerShell.AddScript({
-        param($VMData)
-
-        $result = @{
-            Success = $false
-            VMs = $VMData
-            Snapshots = @()
-            Errors = @()
-        }
-
-        $allSnapshots = @()
-        foreach ($vmData in $VMData) {
-            try {
-                $node = $vmData.Node
-                $vm = $vmData.VM
-
-                if ($node -eq 'localhost' -or $node -eq $env:COMPUTERNAME) {
-                    $snapshots = Get-VMSnapshot -VM $vm -ErrorAction Stop
-                } else {
-                    $snapshots = Get-VMSnapshot -VMName $vm.Name -ComputerName $node -ErrorAction Stop
-                }
-
-                foreach ($snapshot in $snapshots) {
-                    $age = (Get-Date) - $snapshot.CreationTime
-                    $ageText = ""
-
-                    if ($age.TotalDays -ge 1) {
-                        $ageText = "{0} days, {1} hours" -f [Math]::Floor($age.TotalDays), $age.Hours
-                    } elseif ($age.TotalHours -ge 1) {
-                        $ageText = "{0} hours, {1} minutes" -f [Math]::Floor($age.TotalHours), $age.Minutes
-                    } else {
-                        $ageText = "{0} minutes" -f [Math]::Floor($age.TotalMinutes)
-                    }
-
-                    $allSnapshots += [PSCustomObject]@{
-                        Node = $node
-                        VMName = $vm.Name
-                        SnapshotName = $snapshot.Name
-                        CreationTime = $snapshot.CreationTime
-                        Age = $ageText
-                        AgeDays = [Math]::Round($age.TotalDays, 2)
-                        Snapshot = $snapshot
-                    }
-                }
-            }
-            catch {
-                $result.Errors += "Error getting snapshots for $($vmData.Name): $($_.Exception.Message)"
-            }
-        }
-
-        $result.Snapshots = $allSnapshots
-        $result.Success = $true
-
-        return $result
-    })
-    [void]$script:powerShell.AddArgument($script:allVMs)
-
-    # Start async execution
-    $script:runspace = $script:powerShell.BeginInvoke()
-
-    # Start timer to check completion
-    $timer.Start()
+    Refresh-SnapshotData
 })
 
 # Delete button click event
@@ -676,50 +430,32 @@ $buttonDelete.Add_Click({
             $snapshotName = $row.Cells["Snapshot Name"].Value
 
             try {
-                Update-Status "Deleting snapshot '$snapshotName' from VM '$vmName'..." "Blue"
+                Update-Status -StatusLabel $labelStatus -Message "Deleting snapshot '$snapshotName' from VM '$vmName'..." -Color "Blue"
 
-                if ($node -eq 'localhost' -or $node -eq $env:COMPUTERNAME) {
-                    # Local deletion using snapshot object
-                    $snapshotToDelete = $script:allSnapshots | Where-Object {
-                        $_.Node -eq $node -and
-                        $_.VMName -eq $vmName -and
-                        $_.SnapshotName -eq $snapshotName
-                    } | Select-Object -First 1
+                $snapshotToDelete = $script:allSnapshots | Where-Object {
+                    $_.Node -eq $node -and $_.VMName -eq $vmName -and $_.SnapshotName -eq $snapshotName
+                } | Select-Object -First 1
 
-                    if ($snapshotToDelete) {
-                        Remove-VMSnapshot -VMSnapshot $snapshotToDelete.Snapshot -Confirm:$false -ErrorAction Stop
+                if ($snapshotToDelete) {
+                    $deleteResult = Remove-VMSnapshotFromNode -Node $node -VMName $vmName -SnapshotName $snapshotName -SnapshotObject $snapshotToDelete.Snapshot
+
+                    if ($deleteResult.Success) {
                         $successCount++
-                        $deletedSnapshots += @{
-                            Node = $node
-                            VM = $vmName
-                            Snapshot = $snapshotName
-                        }
+                        $deletedSnapshots += @{ Node = $node; VM = $vmName; Snapshot = $snapshotName }
                         Write-Log "Successfully deleted snapshot '$snapshotName' from VM '$vmName' on node '$node'" "SUCCESS"
+                    } else {
+                        $failCount++
+                        Write-Log "Failed to delete snapshot '$snapshotName' from VM '$vmName' on node '$node': $($deleteResult.Error)" "ERROR"
                     }
-                } else {
-                    # Remote deletion using Invoke-Command
-                    Invoke-Command -ComputerName $node -ScriptBlock {
-                        param($VMName, $SnapshotName)
-                        $snapshot = Get-VMSnapshot -VMName $VMName -Name $SnapshotName -ErrorAction Stop
-                        Remove-VMSnapshot -VMSnapshot $snapshot -Confirm:$false -ErrorAction Stop
-                    } -ArgumentList $vmName, $snapshotName -ErrorAction Stop
-                    $successCount++
-                    $deletedSnapshots += @{
-                        Node = $node
-                        VM = $vmName
-                        Snapshot = $snapshotName
-                    }
-                    Write-Log "Successfully deleted snapshot '$snapshotName' from VM '$vmName' on node '$node'" "SUCCESS"
                 }
             }
             catch {
                 $failCount++
                 Write-Log "Failed to delete snapshot '$snapshotName' from VM '$vmName' on node '$node': $($_.Exception.Message)" "ERROR"
-                Write-Warning "Failed to delete snapshot '$snapshotName': $($_.Exception.Message)"
             }
         }
 
-        # Send Teams notification if any snapshots were deleted
+        # Send Teams notification
         if ($successCount -gt 0) {
             $snapshotDetails = $deletedSnapshots | ForEach-Object {
                 "- **$($_.Snapshot)** from VM **$($_.VM)** on node **$($_.Node)**"
@@ -731,12 +467,11 @@ $buttonDelete.Add_Click({
             }
 
             $teamsMessage += "`n`n*Executed by: $env:USERNAME on $env:COMPUTERNAME*"
-
             Send-TeamsNotification -Title "Hyper-V Snapshots Deleted" -Message $teamsMessage -Color "00FF00"
         }
 
         if ($failCount -eq 0) {
-            Update-Status "Successfully deleted $successCount snapshot(s)" "Green"
+            Update-Status -StatusLabel $labelStatus -Message "Successfully deleted $successCount snapshot(s)" -Color "Green"
             Write-Log "Deletion completed: $successCount succeeded" "SUCCESS"
             [System.Windows.Forms.MessageBox]::Show(
                 "Successfully deleted $successCount snapshot(s)",
@@ -745,7 +480,7 @@ $buttonDelete.Add_Click({
                 [System.Windows.Forms.MessageBoxIcon]::Information
             )
         } else {
-            Update-Status "Deleted $successCount snapshot(s), $failCount failed" "Orange"
+            Update-Status -StatusLabel $labelStatus -Message "Deleted $successCount snapshot(s), $failCount failed" -Color "Orange"
             Write-Log "Deletion completed: $successCount succeeded, $failCount failed" "WARNING"
             [System.Windows.Forms.MessageBox]::Show(
                 "Deleted $successCount snapshot(s)`nFailed: $failCount",
@@ -755,20 +490,15 @@ $buttonDelete.Add_Click({
             )
         }
 
-        # Refresh the snapshot list
         Refresh-SnapshotData
     }
 })
 
-# Select All button click event
-$buttonSelectAll.Add_Click({
-    $dataGridSnapshots.SelectAll()
-})
-
-# Deselect All button click event
-$buttonDeselectAll.Add_Click({
-    $dataGridSnapshots.ClearSelection()
-})
+# Select/Deselect All buttons
+$buttonSelectAll.Add_Click({ $dataGridSnapshots.SelectAll() })
+$buttonDeselectAll.Add_Click({ $dataGridSnapshots.ClearSelection() })
 
 # Show the form
+Write-Log "Displaying main form" "INFO"
 [void]$form.ShowDialog()
+Write-Log "Hyper-V Server Management Tool closed" "INFO"
