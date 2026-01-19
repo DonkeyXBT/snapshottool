@@ -42,7 +42,7 @@ function New-CustomTitleBar {
     $titleLabel = New-Object System.Windows.Forms.Label
     $titleLabel.Location = New-Object System.Drawing.Point(15, 10)
     $titleLabel.Size = New-Object System.Drawing.Size(400, 20)
-    $titleLabel.Text = '⚡ Hyper-V Server Management Tool'
+    $titleLabel.Text = 'Hyper-V Server Management Tool'
     $titleLabel.ForeColor = [System.Drawing.Color]::White
     $titleLabel.Font = New-Object System.Drawing.Font("Segoe UI", 11, [System.Drawing.FontStyle]::Bold)
     $titleLabel.BackColor = [System.Drawing.Color]::Transparent
@@ -90,7 +90,7 @@ function New-CustomTitleBar {
     $btnClose = New-Object System.Windows.Forms.Button
     $btnClose.Location = New-Object System.Drawing.Point(1460, 5)
     $btnClose.Size = New-Object System.Drawing.Size(30, 30)
-    $btnClose.Text = '✕'
+    $btnClose.Text = 'X'
     $btnClose.ForeColor = [System.Drawing.Color]::White
     $btnClose.BackColor = [System.Drawing.Color]::Transparent
     $btnClose.FlatStyle = 'Flat'
@@ -251,7 +251,7 @@ function New-MenuPanel {
     $buttonServerMgmt = New-Object System.Windows.Forms.Button
     $buttonServerMgmt.Location = New-Object System.Drawing.Point(500, 280)
     $buttonServerMgmt.Size = New-Object System.Drawing.Size(500, 100)
-    $buttonServerMgmt.Text = "📊 Server Management`n`nView IP addresses, memory, storage, and CPU information"
+    $buttonServerMgmt.Text = "Server Management`n`nView IP addresses, memory, storage, and CPU information"
     $buttonServerMgmt.Font = New-Object System.Drawing.Font("Segoe UI", 12, [System.Drawing.FontStyle]::Bold)
     $buttonServerMgmt.BackColor = $script:ColorPanel
     $buttonServerMgmt.ForeColor = $script:ColorText
@@ -279,7 +279,7 @@ function New-MenuPanel {
     $buttonSnapshotMgmt = New-Object System.Windows.Forms.Button
     $buttonSnapshotMgmt.Location = New-Object System.Drawing.Point(500, 410)
     $buttonSnapshotMgmt.Size = New-Object System.Drawing.Size(500, 100)
-    $buttonSnapshotMgmt.Text = "📸 Snapshot Management`n`nView and manage VM snapshots"
+    $buttonSnapshotMgmt.Text = "Snapshot Management`n`nView and manage VM snapshots"
     $buttonSnapshotMgmt.Font = New-Object System.Drawing.Font("Segoe UI", 12, [System.Drawing.FontStyle]::Bold)
     $buttonSnapshotMgmt.BackColor = $script:ColorPanel
     $buttonSnapshotMgmt.ForeColor = $script:ColorText
@@ -318,7 +318,7 @@ function New-ServerManagementPanel {
     $labelServerTitle = New-Object System.Windows.Forms.Label
     $labelServerTitle.Location = New-Object System.Drawing.Point(20, 15)
     $labelServerTitle.Size = New-Object System.Drawing.Size(250, 35)
-    $labelServerTitle.Text = '📊 Server Management'
+    $labelServerTitle.Text = 'Server Management'
     $labelServerTitle.Font = New-Object System.Drawing.Font("Segoe UI", 14, [System.Drawing.FontStyle]::Bold)
     $labelServerTitle.ForeColor = $script:ColorText
     $panel.Controls.Add($labelServerTitle)
@@ -330,7 +330,7 @@ function New-ServerManagementPanel {
     $textBoxSearch.Font = New-Object System.Drawing.Font("Segoe UI", 10)
     $textBoxSearch.BorderStyle = 'FixedSingle'
     $textBoxSearch.Name = 'textBoxSearchServer'
-    $textBoxSearch.Text = '🔍 Search VMs...'
+    $textBoxSearch.Text = 'Search VMs...'
     $textBoxSearch.ForeColor = $script:ColorTextLight
     $panel.Controls.Add($textBoxSearch)
 
@@ -349,7 +349,7 @@ function New-ServerManagementPanel {
     $checkBoxFavorites = New-Object System.Windows.Forms.CheckBox
     $checkBoxFavorites.Location = New-Object System.Drawing.Point(770, 20)
     $checkBoxFavorites.Size = New-Object System.Drawing.Size(150, 25)
-    $checkBoxFavorites.Text = '⭐ Favorites Only'
+    $checkBoxFavorites.Text = 'Favorites Only'
     $checkBoxFavorites.Font = New-Object System.Drawing.Font("Segoe UI", 9)
     $checkBoxFavorites.ForeColor = $script:ColorText
     $checkBoxFavorites.Name = 'checkBoxFavoritesServer'
@@ -359,7 +359,7 @@ function New-ServerManagementPanel {
     $buttonExport = New-Object System.Windows.Forms.Button
     $buttonExport.Location = New-Object System.Drawing.Point(1140, 15)
     $buttonExport.Size = New-Object System.Drawing.Size(110, 35)
-    $buttonExport.Text = '📄 Export CSV'
+    $buttonExport.Text = 'Export CSV'
     $buttonExport.BackColor = $script:ColorSuccess
     $buttonExport.ForeColor = [System.Drawing.Color]::White
     $buttonExport.FlatStyle = 'Flat'
@@ -373,7 +373,7 @@ function New-ServerManagementPanel {
     $buttonRefreshServer = New-Object System.Windows.Forms.Button
     $buttonRefreshServer.Location = New-Object System.Drawing.Point(1260, 15)
     $buttonRefreshServer.Size = New-Object System.Drawing.Size(110, 35)
-    $buttonRefreshServer.Text = '🔄 Refresh'
+    $buttonRefreshServer.Text = 'Refresh'
     $buttonRefreshServer.BackColor = $script:ColorPrimary
     $buttonRefreshServer.ForeColor = [System.Drawing.Color]::White
     $buttonRefreshServer.FlatStyle = 'Flat'
@@ -432,7 +432,7 @@ function New-SnapshotManagementPanel {
     $labelSnapshotTitle = New-Object System.Windows.Forms.Label
     $labelSnapshotTitle.Location = New-Object System.Drawing.Point(20, 15)
     $labelSnapshotTitle.Size = New-Object System.Drawing.Size(300, 35)
-    $labelSnapshotTitle.Text = '📸 Snapshot Management'
+    $labelSnapshotTitle.Text = 'Snapshot Management'
     $labelSnapshotTitle.Font = New-Object System.Drawing.Font("Segoe UI", 14, [System.Drawing.FontStyle]::Bold)
     $labelSnapshotTitle.ForeColor = $script:ColorText
     $panel.Controls.Add($labelSnapshotTitle)
@@ -453,7 +453,7 @@ function New-SnapshotManagementPanel {
     $textBoxSearchVM.Font = New-Object System.Drawing.Font("Segoe UI", 9)
     $textBoxSearchVM.BorderStyle = 'FixedSingle'
     $textBoxSearchVM.Name = 'textBoxSearchVM'
-    $textBoxSearchVM.Text = '🔍 Search VMs...'
+    $textBoxSearchVM.Text = 'Search VMs...'
     $textBoxSearchVM.ForeColor = $script:ColorTextLight
     $panel.Controls.Add($textBoxSearchVM)
 
@@ -483,7 +483,7 @@ function New-SnapshotManagementPanel {
     $textBoxSearchSnapshot.Font = New-Object System.Drawing.Font("Segoe UI", 9)
     $textBoxSearchSnapshot.BorderStyle = 'FixedSingle'
     $textBoxSearchSnapshot.Name = 'textBoxSearchSnapshot'
-    $textBoxSearchSnapshot.Text = '🔍 Search snapshots...'
+    $textBoxSearchSnapshot.Text = 'Search snapshots...'
     $textBoxSearchSnapshot.ForeColor = $script:ColorTextLight
     $panel.Controls.Add($textBoxSearchSnapshot)
 
@@ -502,7 +502,7 @@ function New-SnapshotManagementPanel {
     $buttonExportSnapshot = New-Object System.Windows.Forms.Button
     $buttonExportSnapshot.Location = New-Object System.Drawing.Point(1020, 87)
     $buttonExportSnapshot.Size = New-Object System.Drawing.Size(110, 30)
-    $buttonExportSnapshot.Text = '📄 Export CSV'
+    $buttonExportSnapshot.Text = 'Export CSV'
     $buttonExportSnapshot.BackColor = $script:ColorSuccess
     $buttonExportSnapshot.ForeColor = [System.Drawing.Color]::White
     $buttonExportSnapshot.FlatStyle = 'Flat'
@@ -516,7 +516,7 @@ function New-SnapshotManagementPanel {
     $buttonRefreshSnapshot = New-Object System.Windows.Forms.Button
     $buttonRefreshSnapshot.Location = New-Object System.Drawing.Point(1140, 87)
     $buttonRefreshSnapshot.Size = New-Object System.Drawing.Size(100, 30)
-    $buttonRefreshSnapshot.Text = '🔄 Refresh'
+    $buttonRefreshSnapshot.Text = 'Refresh'
     $buttonRefreshSnapshot.BackColor = $script:ColorPrimary
     $buttonRefreshSnapshot.ForeColor = [System.Drawing.Color]::White
     $buttonRefreshSnapshot.FlatStyle = 'Flat'
@@ -555,7 +555,7 @@ function New-SnapshotManagementPanel {
     $buttonDelete = New-Object System.Windows.Forms.Button
     $buttonDelete.Location = New-Object System.Drawing.Point(370, 615)
     $buttonDelete.Size = New-Object System.Drawing.Size(160, 40)
-    $buttonDelete.Text = '🗑️ Delete Selected'
+    $buttonDelete.Text = 'Delete Selected'
     $buttonDelete.Enabled = $false
     $buttonDelete.BackColor = $script:ColorDanger
     $buttonDelete.ForeColor = [System.Drawing.Color]::White
