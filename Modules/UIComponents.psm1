@@ -55,7 +55,7 @@ function New-MainForm {
     $form.BackColor = $script:ColorBackground
     $form.FormBorderStyle = 'None'
     $form.Font = New-Object System.Drawing.Font("Segoe UI", 9)
-    $form.DoubleBuffered = $true
+    Enable-DoubleBuffering -Control $form
 
     return $form
 }
@@ -108,7 +108,7 @@ function New-CustomTitleBar {
     $btnMinimize.TabStop = $false
     $btnMinimize.Tag = 'minimize'
     $btnMinimize.Cursor = [System.Windows.Forms.Cursors]::Default
-    $btnMinimize.Add_Click({ $Form.WindowState = 'Minimized' })
+    $btnMinimize.Add_Click({ param($s, $e); $s.FindForm().WindowState = 'Minimized' })
     $btnMinimize.Add_Paint({
         param($sender, $e)
         $g = $e.Graphics
@@ -135,10 +135,12 @@ function New-CustomTitleBar {
     $btnMaximize.Tag = 'maximize'
     $btnMaximize.Cursor = [System.Windows.Forms.Cursors]::Default
     $btnMaximize.Add_Click({
-        if ($Form.WindowState -eq 'Maximized') {
-            $Form.WindowState = 'Normal'
+        param($s, $e)
+        $f = $s.FindForm()
+        if ($f.WindowState -eq 'Maximized') {
+            $f.WindowState = 'Normal'
         } else {
-            $Form.WindowState = 'Maximized'
+            $f.WindowState = 'Maximized'
         }
     })
     $btnMaximize.Add_Paint({
@@ -166,7 +168,7 @@ function New-CustomTitleBar {
     $btnClose.TabStop = $false
     $btnClose.Tag = @{ IconType = 'close'; IsHovered = $false }
     $btnClose.Cursor = [System.Windows.Forms.Cursors]::Default
-    $btnClose.Add_Click({ $Form.Close() })
+    $btnClose.Add_Click({ param($s, $e); $s.FindForm().Close() })
     $btnClose.Add_Paint({
         param($sender, $e)
         $g = $e.Graphics
@@ -206,7 +208,8 @@ function New-CustomTitleBar {
     $dragHandler_MouseDown = {
         param($sender, $e)
         if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
-            $Form.Tag = @{
+            $parentForm = $sender.FindForm()
+            $parentForm.Tag = @{
                 Dragging = $true
                 StartPoint = $e.Location
             }
@@ -214,16 +217,18 @@ function New-CustomTitleBar {
     }
     $dragHandler_MouseMove = {
         param($sender, $e)
-        if ($Form.Tag -and $Form.Tag.Dragging) {
-            $Form.Location = [System.Drawing.Point]::new(
-                $Form.Location.X + ($e.X - $Form.Tag.StartPoint.X),
-                $Form.Location.Y + ($e.Y - $Form.Tag.StartPoint.Y)
+        $parentForm = $sender.FindForm()
+        if ($parentForm.Tag -and $parentForm.Tag.Dragging) {
+            $parentForm.Location = [System.Drawing.Point]::new(
+                $parentForm.Location.X + ($e.X - $parentForm.Tag.StartPoint.X),
+                $parentForm.Location.Y + ($e.Y - $parentForm.Tag.StartPoint.Y)
             )
         }
     }
     $dragHandler_MouseUp = {
         param($sender, $e)
-        if ($Form.Tag) { $Form.Tag.Dragging = $false }
+        $parentForm = $sender.FindForm()
+        if ($parentForm.Tag) { $parentForm.Tag.Dragging = $false }
     }
 
     # Attach drag to both panel and title label
@@ -406,25 +411,28 @@ function New-MenuPanel {
     $buttonServerMgmt = New-Object System.Windows.Forms.Button
     $buttonServerMgmt.Location = New-Object System.Drawing.Point(0, 0)
     $buttonServerMgmt.Size = New-Object System.Drawing.Size(0, 0)
-    $buttonServerMgmt.Visible = $false
     $buttonServerMgmt.Enabled = $false
     $buttonServerMgmt.Name = 'buttonServerMgmt'
     $panel.Controls.Add($buttonServerMgmt)
 
-    # Wire card click to hidden button
+    # Capture colors into local variables for closures
+    $hoverColor = $script:ColorSurfaceHover
+    $normalColor = $script:ColorSurface
+
+    # Wire card click to hidden button (use GetNewClosure to capture local variables)
     $serverCardClick = {
         if ($buttonServerMgmt.Enabled) { $buttonServerMgmt.PerformClick() }
-    }
+    }.GetNewClosure()
     $serverCardEnter = {
         if ($buttonServerMgmt.Enabled) {
-            $cardServer.BackColor = $script:ColorSurfaceHover
+            $cardServer.BackColor = $hoverColor
         }
-    }
+    }.GetNewClosure()
     $serverCardLeave = {
         if ($buttonServerMgmt.Enabled) {
-            $cardServer.BackColor = $script:ColorSurface
+            $cardServer.BackColor = $normalColor
         }
-    }
+    }.GetNewClosure()
     $cardServer.Add_Click($serverCardClick)
     $cardServer.Add_MouseEnter($serverCardEnter)
     $cardServer.Add_MouseLeave($serverCardLeave)
@@ -478,25 +486,24 @@ function New-MenuPanel {
     $buttonSnapshotMgmt = New-Object System.Windows.Forms.Button
     $buttonSnapshotMgmt.Location = New-Object System.Drawing.Point(0, 0)
     $buttonSnapshotMgmt.Size = New-Object System.Drawing.Size(0, 0)
-    $buttonSnapshotMgmt.Visible = $false
     $buttonSnapshotMgmt.Enabled = $false
     $buttonSnapshotMgmt.Name = 'buttonSnapshotMgmt'
     $panel.Controls.Add($buttonSnapshotMgmt)
 
-    # Wire card click to hidden button
+    # Wire card click to hidden button (use GetNewClosure to capture local variables)
     $snapshotCardClick = {
         if ($buttonSnapshotMgmt.Enabled) { $buttonSnapshotMgmt.PerformClick() }
-    }
+    }.GetNewClosure()
     $snapshotCardEnter = {
         if ($buttonSnapshotMgmt.Enabled) {
-            $cardSnapshot.BackColor = $script:ColorSurfaceHover
+            $cardSnapshot.BackColor = $hoverColor
         }
-    }
+    }.GetNewClosure()
     $snapshotCardLeave = {
         if ($buttonSnapshotMgmt.Enabled) {
-            $cardSnapshot.BackColor = $script:ColorSurface
+            $cardSnapshot.BackColor = $normalColor
         }
-    }
+    }.GetNewClosure()
     $cardSnapshot.Add_Click($snapshotCardClick)
     $cardSnapshot.Add_MouseEnter($snapshotCardEnter)
     $cardSnapshot.Add_MouseLeave($snapshotCardLeave)
