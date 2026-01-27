@@ -100,7 +100,13 @@ $timer.Add_Tick({
                 $script:allSnapshots = $result.Snapshots
                 $script:serverInfo = $result.ServerInfo
 
-                Write-Log "Successfully loaded $($script:allVMs.Count) VMs and $($script:allSnapshots.Count) snapshots" "SUCCESS"
+                Write-Log "Successfully loaded $($script:allVMs.Count) VMs and $($script:allSnapshots.Count) snapshots from $($script:hyperVNodes.Count) node(s)" "SUCCESS"
+
+                if ($result.Errors -and $result.Errors.Count -gt 0) {
+                    foreach ($err in $result.Errors) {
+                        Write-Log $err "WARNING"
+                    }
+                }
 
                 $buttonServerMgmt.Enabled = $true
                 $buttonSnapshotMgmt.Enabled = $true
@@ -109,10 +115,17 @@ $timer.Add_Tick({
                 Update-Status -StatusLabel $labelStatus -Message "Connected successfully to $($script:hyperVNodes.Count) node(s) - $($script:allVMs.Count) VMs found" -Color "Green"
             }
             else {
+                Write-Log "Failed to load data from nodes" "ERROR"
+                if ($result -and $result.Errors) {
+                    foreach ($err in $result.Errors) {
+                        Write-Log $err "ERROR"
+                    }
+                }
                 Update-Status -StatusLabel $labelStatus -Message "Failed to load data" -Color "Red"
             }
         }
         catch {
+            Write-Log "Error processing connection results: $($_.Exception.Message)" "ERROR"
             Update-Status -StatusLabel $labelStatus -Message "Error processing results: $($_.Exception.Message)" -Color "Red"
             $buttonConnect.Enabled = $true
         }
@@ -315,6 +328,7 @@ function Refresh-SnapshotGrid {
 # Load server management data
 function Load-ServerManagementData {
     if ($script:serverInfo.Count -eq 0) {
+        Write-Log "Server info cache empty, starting background data collection" "INFO"
         Update-Status -StatusLabel $labelStatus -Message "Loading server information..." -Color "Blue"
         Get-ServerInformation
         return
@@ -322,15 +336,18 @@ function Load-ServerManagementData {
 
     $script:filteredServerInfo = $script:serverInfo
     Refresh-ServerGrid
+    Write-Log "Server Management view loaded with $($script:serverInfo.Count) VMs" "SUCCESS"
     Update-Status -StatusLabel $labelStatus -Message "Loaded information for $($script:serverInfo.Count) VMs" -Color "Green"
 }
 
 # Load snapshot management data
 function Load-SnapshotManagementData {
+    Write-Log "Loading Snapshot Management data" "INFO"
     $script:filteredVMs = $script:allVMs
     Apply-VMListFilters
 
     if ($script:allSnapshots.Count -eq 0) {
+        Write-Log "No snapshots found across $($script:allVMs.Count) VMs" "INFO"
         Update-Status -StatusLabel $labelStatus -Message "No snapshots found" -Color "Green"
         $labelSummary.Text = "Total: 0 snapshots"
         $buttonDelete.Enabled = $false
@@ -342,11 +359,13 @@ function Load-SnapshotManagementData {
 
     $script:filteredSnapshots = $script:allSnapshots
     Refresh-SnapshotGrid
+    Write-Log "Snapshot Management view loaded with $($script:allSnapshots.Count) snapshots from $($script:allVMs.Count) VMs" "SUCCESS"
     Update-Status -StatusLabel $labelStatus -Message "Loaded $($script:allSnapshots.Count) snapshots from $($script:allVMs.Count) VMs" -Color "Green"
 }
 
 # Get server information in background
 function Get-ServerInformation {
+    Write-Log "Gathering server information for $($script:allVMs.Count) VMs in background..." "INFO"
     Update-Status -StatusLabel $labelStatus -Message "Gathering server information in background..." -Color "Blue"
     $buttonRefreshServer.Enabled = $false
 
@@ -369,9 +388,11 @@ function Get-ServerInformation {
                 $script:serverInfo = $script:powerShell.EndInvoke($script:runspace)
                 $buttonRefreshServer.Enabled = $true
                 $script:filteredServerInfo = $script:serverInfo
+                Write-Log "Server information collection complete: $($script:serverInfo.Count) VMs processed" "SUCCESS"
                 Load-ServerManagementData
             }
             catch {
+                Write-Log "Error loading server information: $($_.Exception.Message)" "ERROR"
                 Update-Status -StatusLabel $labelStatus -Message "Error loading server information: $($_.Exception.Message)" -Color "Red"
                 $buttonRefreshServer.Enabled = $true
             }
@@ -391,8 +412,12 @@ function Get-ServerInformation {
 
 # Refresh snapshot data
 function Refresh-SnapshotData {
-    if ($script:allVMs.Count -eq 0) { return }
+    if ($script:allVMs.Count -eq 0) {
+        Write-Log "No VMs loaded, skipping snapshot refresh" "WARNING"
+        return
+    }
 
+    Write-Log "Refreshing snapshot data for $($script:allVMs.Count) VMs..." "INFO"
     Update-Status -StatusLabel $labelStatus -Message "Loading snapshots..." -Color "Blue"
     $dataGridSnapshots.DataSource = $null
     $buttonRefreshSnapshot.Enabled = $false
@@ -416,9 +441,11 @@ function Refresh-SnapshotData {
                 $script:allSnapshots = $script:powerShell.EndInvoke($script:runspace)
                 $buttonRefreshSnapshot.Enabled = $true
                 $script:filteredSnapshots = $script:allSnapshots
+                Write-Log "Snapshot refresh complete: $($script:allSnapshots.Count) snapshots found" "SUCCESS"
                 Load-SnapshotManagementData
             }
             catch {
+                Write-Log "Error loading snapshots: $($_.Exception.Message)" "ERROR"
                 Update-Status -StatusLabel $labelStatus -Message "Error loading snapshots: $($_.Exception.Message)" -Color "Red"
                 $buttonRefreshSnapshot.Enabled = $true
             }
@@ -522,19 +549,25 @@ $dataGridServer.ContextMenuStrip = $contextMenuServer
 # Export buttons
 $buttonExportServer.Add_Click({
     if ($dataGridServer.DataSource) {
+        Write-Log "Exporting server data to CSV ($($script:filteredServerInfo.Count) rows)" "INFO"
         $success = Export-ToCSV -DataTable $dataGridServer.DataSource -DefaultFileName "ServerInfo_$(Get-Date -Format 'yyyyMMdd_HHmmss').csv"
         if ($success) {
             [System.Windows.Forms.MessageBox]::Show("Data exported successfully!", "Export Complete", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
         }
+    } else {
+        Write-Log "Export server data skipped: no data loaded" "WARNING"
     }
 })
 
 $buttonExportSnapshot.Add_Click({
     if ($dataGridSnapshots.DataSource) {
+        Write-Log "Exporting snapshot data to CSV ($($script:filteredSnapshots.Count) rows)" "INFO"
         $success = Export-ToCSV -DataTable $dataGridSnapshots.DataSource -DefaultFileName "Snapshots_$(Get-Date -Format 'yyyyMMdd_HHmmss').csv"
         if ($success) {
             [System.Windows.Forms.MessageBox]::Show("Data exported successfully!", "Export Complete", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
         }
+    } else {
+        Write-Log "Export snapshot data skipped: no data loaded" "WARNING"
     }
 })
 
@@ -543,6 +576,7 @@ $buttonConnect.Add_Click({
     $nodeInput = $textBoxNodes.Text.Trim()
 
     if ([string]::IsNullOrWhiteSpace($nodeInput)) {
+        Write-Log "Connection attempt with empty node input" "WARNING"
         [System.Windows.Forms.MessageBox]::Show(
             "Please enter at least one Hyper-V node",
             "Input Required",
@@ -553,7 +587,7 @@ $buttonConnect.Add_Click({
     }
 
     $script:hyperVNodes = $nodeInput -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' }
-    Write-Log "Connecting to nodes: $($script:hyperVNodes -join ', ')" "INFO"
+    Write-Log "Connecting to $($script:hyperVNodes.Count) node(s): $($script:hyperVNodes -join ', ')" "INFO"
     Update-Status -StatusLabel $labelStatus -Message "Connecting to nodes in background..." -Color "Blue"
 
     $script:allVMs = @()
@@ -630,6 +664,7 @@ $buttonDelete.Add_Click({
     $selectedRows = $dataGridSnapshots.SelectedRows
 
     if ($selectedRows.Count -eq 0) {
+        Write-Log "Snapshot deletion attempted with no selection" "WARNING"
         [System.Windows.Forms.MessageBox]::Show(
             "Please select at least one snapshot to delete",
             "No Selection",
@@ -639,6 +674,7 @@ $buttonDelete.Add_Click({
         return
     }
 
+    Write-Log "User requested deletion of $($selectedRows.Count) snapshot(s)" "INFO"
     $result = [System.Windows.Forms.MessageBox]::Show(
         "Are you sure you want to delete $($selectedRows.Count) snapshot(s)?`n`nThis action cannot be undone!",
         "Confirm Deletion",
@@ -653,13 +689,18 @@ $buttonDelete.Add_Click({
 
         Write-Log "Starting deletion of $($selectedRows.Count) snapshot(s)" "INFO"
 
+        $totalCount = $selectedRows.Count
+        $currentIndex = 0
+
         foreach ($row in $selectedRows) {
             $node = $row.Cells["Node"].Value
             $vmName = $row.Cells["VM Name"].Value
             $snapshotName = $row.Cells["Snapshot Name"].Value
+            $currentIndex++
 
             try {
-                Update-Status -StatusLabel $labelStatus -Message "Deleting snapshot '$snapshotName' from VM '$vmName'..." -Color "Blue"
+                Write-Log "[$currentIndex/$totalCount] Deleting snapshot '$snapshotName' from VM '$vmName' on node '$node'" "INFO"
+                Update-Status -StatusLabel $labelStatus -Message "[$currentIndex/$totalCount] Deleting snapshot '$snapshotName' from VM '$vmName'..." -Color "Blue"
 
                 $snapshotToDelete = $script:allSnapshots | Where-Object {
                     $_.Node -eq $node -and $_.VMName -eq $vmName -and $_.SnapshotName -eq $snapshotName
@@ -695,6 +736,7 @@ $buttonDelete.Add_Click({
             }
 
             $teamsMessage += "`n`n*Executed by: $env:USERNAME on $env:COMPUTERNAME*"
+            Write-Log "Sending Teams notification for $successCount deleted snapshot(s)" "INFO"
             Send-TeamsNotification -Title "Hyper-V Snapshots Deleted" -Message $teamsMessage -Color "00FF00"
         }
 
@@ -718,6 +760,7 @@ $buttonDelete.Add_Click({
             )
         }
 
+        Write-Log "Refreshing snapshot list after deletion" "INFO"
         Refresh-SnapshotData
     }
 })

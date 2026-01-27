@@ -30,18 +30,20 @@ function Initialize-LogFile {
     }
 
     Write-Log "Hyper-V Server Management Tool started" "INFO"
+    Write-Log "Log file: $($script:LogFile)" "DEBUG"
 }
 
 function Write-Log {
     param(
         [string]$Message,
-        [ValidateSet('INFO', 'WARNING', 'ERROR', 'SUCCESS')]
+        [ValidateSet('INFO', 'WARNING', 'ERROR', 'SUCCESS', 'DEBUG')]
         [string]$Level = 'INFO'
     )
 
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     $logMessage = "[$timestamp] [$Level] $Message"
 
+    # Write to log file
     try {
         if ($script:LogFile) {
             Add-Content -Path $script:LogFile -Value $logMessage -ErrorAction Stop
@@ -50,6 +52,27 @@ function Write-Log {
     catch {
         Write-Warning "Failed to write to log file: $($_.Exception.Message)"
     }
+
+    # Write to PowerShell console with color-coded output
+    $consoleColor = switch ($Level) {
+        'INFO'    { 'Cyan' }
+        'WARNING' { 'Yellow' }
+        'ERROR'   { 'Red' }
+        'SUCCESS' { 'Green' }
+        'DEBUG'   { 'DarkGray' }
+        default   { 'White' }
+    }
+    $levelTag = switch ($Level) {
+        'INFO'    { 'INF' }
+        'WARNING' { 'WRN' }
+        'ERROR'   { 'ERR' }
+        'SUCCESS' { 'OK ' }
+        'DEBUG'   { 'DBG' }
+        default   { '---' }
+    }
+    Write-Host "[$timestamp] " -NoNewline -ForegroundColor DarkGray
+    Write-Host "[$levelTag] " -NoNewline -ForegroundColor $consoleColor
+    Write-Host $Message -ForegroundColor $consoleColor
 }
 
 function Send-TeamsNotification {
@@ -59,6 +82,7 @@ function Send-TeamsNotification {
         [string]$Color = "00FF00"  # Green by default
     )
 
+    Write-Log "Sending Teams notification: '$Title'" "INFO"
     try {
         $body = @{
             "@type" = "MessageCard"
@@ -70,7 +94,7 @@ function Send-TeamsNotification {
         } | ConvertTo-Json
 
         Invoke-RestMethod -Uri $script:TeamsWebhookUrl -Method Post -Body $body -ContentType 'application/json' -ErrorAction Stop
-        Write-Log "Teams notification sent: $Title" "INFO"
+        Write-Log "Teams notification sent successfully: '$Title'" "SUCCESS"
     }
     catch {
         Write-Log "Failed to send Teams notification: $($_.Exception.Message)" "ERROR"
@@ -114,6 +138,7 @@ function Export-ToCSV {
         $saveFileDialog.Title = "Export to CSV"
 
         if ($saveFileDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+            Write-Log "Exporting $($DataTable.Rows.Count) rows to CSV..." "INFO"
             $csvData = @()
             foreach ($row in $DataTable.Rows) {
                 $rowData = @{}
@@ -124,9 +149,10 @@ function Export-ToCSV {
             }
 
             $csvData | Export-Csv -Path $saveFileDialog.FileName -NoTypeInformation -Encoding UTF8
-            Write-Log "Exported data to CSV: $($saveFileDialog.FileName)" "SUCCESS"
+            Write-Log "Exported $($DataTable.Rows.Count) rows to CSV: $($saveFileDialog.FileName)" "SUCCESS"
             return $true
         }
+        Write-Log "CSV export cancelled by user" "INFO"
         return $false
     }
     catch {
@@ -150,10 +176,14 @@ function Initialize-Favorites {
         try {
             $script:Favorites = Get-Content $script:FavoritesFile -Raw | ConvertFrom-Json
             if (-not $script:Favorites) { $script:Favorites = @() }
+            Write-Log "Loaded $($script:Favorites.Count) favorite(s) from $($script:FavoritesFile)" "INFO"
         }
         catch {
+            Write-Log "Failed to load favorites, starting fresh: $($_.Exception.Message)" "WARNING"
             $script:Favorites = @()
         }
+    } else {
+        Write-Log "No favorites file found, starting fresh" "DEBUG"
     }
 }
 

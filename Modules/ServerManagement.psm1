@@ -1,14 +1,47 @@
 # ServerManagement.psm1 - Server information gathering functions
 
+function Write-ConsoleLog {
+    param(
+        [string]$Message,
+        [ValidateSet('INFO', 'WARNING', 'ERROR', 'SUCCESS')]
+        [string]$Level = 'INFO'
+    )
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $consoleColor = switch ($Level) {
+        'INFO'    { 'Cyan' }
+        'WARNING' { 'Yellow' }
+        'ERROR'   { 'Red' }
+        'SUCCESS' { 'Green' }
+        default   { 'White' }
+    }
+    $levelTag = switch ($Level) {
+        'INFO'    { 'INF' }
+        'WARNING' { 'WRN' }
+        'ERROR'   { 'ERR' }
+        'SUCCESS' { 'OK ' }
+        default   { '---' }
+    }
+    Write-Host "[$timestamp] " -NoNewline -ForegroundColor DarkGray
+    Write-Host "[$levelTag] " -NoNewline -ForegroundColor $consoleColor
+    Write-Host $Message -ForegroundColor $consoleColor
+}
+
 function Get-ServerInformationAsync {
     param([array]$VMData)
 
     $serverInfo = @()
+    $totalVMs = $VMData.Count
+    $currentVM = 0
+
+    Write-ConsoleLog "Starting server information collection for $totalVMs VMs" "INFO"
 
     foreach ($vmData in $VMData) {
         try {
             $node = $vmData.Node
             $vm = $vmData.VM
+            $currentVM++
+
+            Write-ConsoleLog "[$currentVM/$totalVMs] Collecting info for VM '$($vm.Name)' on node '$node'" "INFO"
 
             # Get VM network adapters and IP addresses
             $ipAddresses = @()
@@ -137,10 +170,11 @@ function Get-ServerInformationAsync {
             }
         }
         catch {
-            Write-Warning "Error getting info for $($vm.Name): $($_.Exception.Message)"
+            Write-ConsoleLog "Error getting info for VM '$($vm.Name)' on node '$node': $($_.Exception.Message)" "ERROR"
         }
     }
 
+    Write-ConsoleLog "Server information collection complete: $($serverInfo.Count) of $totalVMs VMs processed" "SUCCESS"
     return $serverInfo
 }
 
@@ -149,14 +183,22 @@ function Get-VMsFromNodes {
 
     $allVMs = @()
     $errors = @()
+    $totalNodes = $Nodes.Count
+    $currentNode = 0
+
+    Write-ConsoleLog "Discovering VMs from $totalNodes node(s)" "INFO"
 
     foreach ($node in $Nodes) {
+        $currentNode++
+        Write-ConsoleLog "[$currentNode/$totalNodes] Connecting to node '$node'" "INFO"
         try {
             if ($node -eq 'localhost' -or $node -eq $env:COMPUTERNAME) {
                 $vms = Get-VM -ErrorAction Stop
             } else {
                 $vms = Get-VM -ComputerName $node -ErrorAction Stop
             }
+
+            Write-ConsoleLog "[$currentNode/$totalNodes] Found $($vms.Count) VMs on node '$node'" "SUCCESS"
 
             foreach ($vm in $vms) {
                 $allVMs += [PSCustomObject]@{
@@ -169,9 +211,13 @@ function Get-VMsFromNodes {
             }
         }
         catch {
-            $errors += "Error connecting to ${node}: $($_.Exception.Message)"
+            $errorMsg = "Error connecting to ${node}: $($_.Exception.Message)"
+            Write-ConsoleLog $errorMsg "ERROR"
+            $errors += $errorMsg
         }
     }
+
+    Write-ConsoleLog "VM discovery complete: $($allVMs.Count) VMs found across $totalNodes node(s), $($errors.Count) error(s)" "INFO"
 
     return @{
         VMs = $allVMs
