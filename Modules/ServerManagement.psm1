@@ -38,6 +38,52 @@ function Get-ServerInformationAsync {
             $memoryDemandGB = if ($vm.MemoryDemand) { [Math]::Round($vm.MemoryDemand / 1GB, 2) } else { 0 }
             $memoryAvailableGB = [Math]::Round(($vm.MemoryAssigned - $vm.MemoryDemand) / 1GB, 2)
 
+            # Get guest OS information via KVP Exchange (requires integration services)
+            $guestOS = "N/A"
+            try {
+                if ($node -eq 'localhost' -or $node -eq $env:COMPUTERNAME) {
+                    $vmWmi = Get-CimInstance -Namespace "root\virtualization\v2" -ClassName "Msvm_ComputerSystem" -Filter "ElementName='$($vm.Name)'" -ErrorAction SilentlyContinue
+                    if ($vmWmi) {
+                        $kvp = Get-CimAssociatedInstance -InputObject $vmWmi -ResultClassName "Msvm_KvpExchangeComponent" -ErrorAction SilentlyContinue
+                        if ($kvp -and $kvp.GuestIntrinsicExchangeItems) {
+                            foreach ($item in $kvp.GuestIntrinsicExchangeItems) {
+                                $xml = [xml]$item
+                                $propName = ($xml.INSTANCE.PROPERTY | Where-Object { $_.NAME -eq 'Name' }).VALUE
+                                $propData = ($xml.INSTANCE.PROPERTY | Where-Object { $_.NAME -eq 'Data' }).VALUE
+                                if ($propName -eq 'OSName') {
+                                    $guestOS = $propData
+                                    break
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    $remoteOS = Invoke-Command -ComputerName $node -ScriptBlock {
+                        param($VMName)
+                        $osName = "N/A"
+                        $vmWmi = Get-CimInstance -Namespace "root\virtualization\v2" -ClassName "Msvm_ComputerSystem" -Filter "ElementName='$VMName'" -ErrorAction SilentlyContinue
+                        if ($vmWmi) {
+                            $kvp = Get-CimAssociatedInstance -InputObject $vmWmi -ResultClassName "Msvm_KvpExchangeComponent" -ErrorAction SilentlyContinue
+                            if ($kvp -and $kvp.GuestIntrinsicExchangeItems) {
+                                foreach ($item in $kvp.GuestIntrinsicExchangeItems) {
+                                    $xml = [xml]$item
+                                    $propName = ($xml.INSTANCE.PROPERTY | Where-Object { $_.NAME -eq 'Name' }).VALUE
+                                    $propData = ($xml.INSTANCE.PROPERTY | Where-Object { $_.NAME -eq 'Data' }).VALUE
+                                    if ($propName -eq 'OSName') {
+                                        $osName = $propData
+                                        break
+                                    }
+                                }
+                            }
+                        }
+                        return $osName
+                    } -ArgumentList $vm.Name -ErrorAction SilentlyContinue
+                    if ($remoteOS) { $guestOS = $remoteOS }
+                }
+            } catch {
+                # OS detection failed, leave as N/A
+            }
+
             # Get disk information
             $diskSizeGB = 0
             $diskUsedGB = 0
@@ -80,6 +126,7 @@ function Get-ServerInformationAsync {
                 Node = $node
                 VMName = $vm.Name
                 State = $vm.State
+                GuestOS = $guestOS
                 IPAddresses = $ipAddressString
                 MemoryTotalGB = $memoryTotalGB
                 MemoryUsedGB = $memoryDemandGB

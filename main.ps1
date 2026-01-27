@@ -166,7 +166,7 @@ function Apply-ServerFilters {
         $matchesFavorites = $true
 
         if ($searchText) {
-            $matchesSearch = ($_.VMName -like "*$searchText*") -or ($_.IPAddresses -like "*$searchText*") -or ($_.Node -like "*$searchText*")
+            $matchesSearch = ($_.VMName -like "*$searchText*") -or ($_.IPAddresses -like "*$searchText*") -or ($_.Node -like "*$searchText*") -or ($_.GuestOS -like "*$searchText*")
         }
 
         if ($stateFilter -and $stateFilter -ne 'All States') {
@@ -190,6 +190,7 @@ function Refresh-ServerGrid {
     [void]$dataTable.Columns.Add("Node", [string])
     [void]$dataTable.Columns.Add("VM Name", [string])
     [void]$dataTable.Columns.Add("State", [string])
+    [void]$dataTable.Columns.Add("Operating System", [string])
     [void]$dataTable.Columns.Add("IP Addresses", [string])
     [void]$dataTable.Columns.Add("Memory Total (GB)", [string])
     [void]$dataTable.Columns.Add("Memory Used (GB)", [string])
@@ -205,6 +206,7 @@ function Refresh-ServerGrid {
             $server.Node,
             $server.VMName,
             $server.State,
+            $server.GuestOS,
             $server.IPAddresses,
             $server.MemoryTotalGB,
             $server.MemoryUsedGB,
