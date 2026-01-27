@@ -55,7 +55,7 @@ function New-MainForm {
     $form.BackColor = $script:ColorBackground
     $form.FormBorderStyle = 'None'
     $form.Font = New-Object System.Drawing.Font("Segoe UI", 9)
-    $form.DoubleBuffered = $true
+    Enable-DoubleBuffering -Control $form
 
     return $form
 }
@@ -108,7 +108,7 @@ function New-CustomTitleBar {
     $btnMinimize.TabStop = $false
     $btnMinimize.Tag = 'minimize'
     $btnMinimize.Cursor = [System.Windows.Forms.Cursors]::Default
-    $btnMinimize.Add_Click({ $Form.WindowState = 'Minimized' })
+    $btnMinimize.Add_Click({ param($s, $ev); $s.FindForm().WindowState = 'Minimized' })
     $btnMinimize.Add_Paint({
         param($sender, $e)
         $g = $e.Graphics
@@ -135,10 +135,12 @@ function New-CustomTitleBar {
     $btnMaximize.Tag = 'maximize'
     $btnMaximize.Cursor = [System.Windows.Forms.Cursors]::Default
     $btnMaximize.Add_Click({
-        if ($Form.WindowState -eq 'Maximized') {
-            $Form.WindowState = 'Normal'
+        param($s, $ev)
+        $parentForm = $s.FindForm()
+        if ($parentForm.WindowState -eq 'Maximized') {
+            $parentForm.WindowState = 'Normal'
         } else {
-            $Form.WindowState = 'Maximized'
+            $parentForm.WindowState = 'Maximized'
         }
     })
     $btnMaximize.Add_Paint({
@@ -166,7 +168,7 @@ function New-CustomTitleBar {
     $btnClose.TabStop = $false
     $btnClose.Tag = @{ IconType = 'close'; IsHovered = $false }
     $btnClose.Cursor = [System.Windows.Forms.Cursors]::Default
-    $btnClose.Add_Click({ $Form.Close() })
+    $btnClose.Add_Click({ param($s, $ev); $s.FindForm().Close() })
     $btnClose.Add_Paint({
         param($sender, $e)
         $g = $e.Graphics
@@ -206,7 +208,8 @@ function New-CustomTitleBar {
     $dragHandler_MouseDown = {
         param($sender, $e)
         if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
-            $Form.Tag = @{
+            $parentForm = $sender.FindForm()
+            $parentForm.Tag = @{
                 Dragging = $true
                 StartPoint = $e.Location
             }
@@ -214,16 +217,18 @@ function New-CustomTitleBar {
     }
     $dragHandler_MouseMove = {
         param($sender, $e)
-        if ($Form.Tag -and $Form.Tag.Dragging) {
-            $Form.Location = [System.Drawing.Point]::new(
-                $Form.Location.X + ($e.X - $Form.Tag.StartPoint.X),
-                $Form.Location.Y + ($e.Y - $Form.Tag.StartPoint.Y)
+        $parentForm = $sender.FindForm()
+        if ($parentForm.Tag -and $parentForm.Tag.Dragging) {
+            $parentForm.Location = [System.Drawing.Point]::new(
+                $parentForm.Location.X + ($e.X - $parentForm.Tag.StartPoint.X),
+                $parentForm.Location.Y + ($e.Y - $parentForm.Tag.StartPoint.Y)
             )
         }
     }
     $dragHandler_MouseUp = {
         param($sender, $e)
-        if ($Form.Tag) { $Form.Tag.Dragging = $false }
+        $parentForm = $sender.FindForm()
+        if ($parentForm.Tag) { $parentForm.Tag.Dragging = $false }
     }
 
     # Attach drag to both panel and title label
