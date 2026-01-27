@@ -14,7 +14,7 @@
 .NOTES
     Author: Claude
     Date: 2026-01-19
-    Version: 2.1 (Modern UI with Search, Filter, Export, Favorites)
+    Version: 3.0 (Modern Dark Theme UI)
 #>
 
 # Get script path
@@ -156,7 +156,7 @@ function Show-Panel {
 # Apply server filters
 function Apply-ServerFilters {
     $searchText = $textBoxSearchServer.Text
-    if ($searchText -eq '🔍 Search VMs...') { $searchText = '' }
+    if ($searchText -eq 'Search VMs...') { $searchText = '' }
     $stateFilter = $comboBoxFilterServer.SelectedItem
     $favoritesOnly = $checkBoxFavoritesServer.Checked
 
@@ -186,7 +186,7 @@ function Apply-ServerFilters {
 # Refresh server grid
 function Refresh-ServerGrid {
     $dataTable = New-Object System.Data.DataTable
-    [void]$dataTable.Columns.Add("⭐", [string])
+    [void]$dataTable.Columns.Add("Fav", [string])
     [void]$dataTable.Columns.Add("Node", [string])
     [void]$dataTable.Columns.Add("VM Name", [string])
     [void]$dataTable.Columns.Add("State", [string])
@@ -199,7 +199,7 @@ function Refresh-ServerGrid {
     [void]$dataTable.Columns.Add("Disk Used (GB)", [string])
 
     foreach ($server in $script:filteredServerInfo) {
-        $isFav = if (Test-IsFavorite -Node $server.Node -VMName $server.VMName) { "⭐" } else { "" }
+        $isFav = if (Test-IsFavorite -Node $server.Node -VMName $server.VMName) { "*" } else { "" }
         [void]$dataTable.Rows.Add(
             $isFav,
             $server.Node,
@@ -222,7 +222,7 @@ function Refresh-ServerGrid {
 # Apply snapshot filters
 function Apply-SnapshotFilters {
     $searchText = $textBoxSearchSnapshot.Text
-    if ($searchText -eq '🔍 Search snapshots...') { $searchText = '' }
+    if ($searchText -eq 'Search snapshots...') { $searchText = '' }
     $ageFilter = $comboBoxAgeFilter.SelectedItem
 
     $script:filteredSnapshots = $script:allSnapshots | Where-Object {
@@ -250,7 +250,7 @@ function Apply-SnapshotFilters {
 # Apply VM list filters
 function Apply-VMListFilters {
     $searchText = $textBoxSearchVM.Text
-    if ($searchText -eq '🔍 Search VMs...') { $searchText = '' }
+    if ($searchText -eq 'Search VMs...') { $searchText = '' }
 
     $script:filteredVMs = $script:allVMs | Where-Object {
         if ($searchText) {
@@ -264,7 +264,7 @@ function Apply-VMListFilters {
     foreach ($vmData in $script:filteredVMs) {
         $displayText = $vmData.DisplayName
         if (Test-IsFavorite -Node $vmData.Node -VMName $vmData.Name) {
-            $displayText = "⭐ " + $displayText
+            $displayText = "* " + $displayText
         }
         [void]$listBoxVMs.Items.Add($displayText)
     }
@@ -434,45 +434,48 @@ function Refresh-SnapshotData {
     $localTimer.Start()
 }
 
-# Placeholder text management for search boxes
+# Placeholder text management for search boxes (dark theme colors)
+$script:PlaceholderColor = [System.Drawing.Color]::FromArgb(100, 116, 139)
+$script:ActiveTextColor = [System.Drawing.Color]::FromArgb(237, 237, 245)
+
 $textBoxSearchServer.Add_GotFocus({
-    if ($textBoxSearchServer.Text -eq '🔍 Search VMs...') {
+    if ($textBoxSearchServer.Text -eq 'Search VMs...') {
         $textBoxSearchServer.Text = ''
-        $textBoxSearchServer.ForeColor = [System.Drawing.Color]::Black
+        $textBoxSearchServer.ForeColor = $script:ActiveTextColor
     }
 })
 $textBoxSearchServer.Add_LostFocus({
     if ([string]::IsNullOrWhiteSpace($textBoxSearchServer.Text)) {
-        $textBoxSearchServer.Text = '🔍 Search VMs...'
-        $textBoxSearchServer.ForeColor = [System.Drawing.Color]::Gray
+        $textBoxSearchServer.Text = 'Search VMs...'
+        $textBoxSearchServer.ForeColor = $script:PlaceholderColor
     }
 })
 $textBoxSearchServer.Add_TextChanged({ Apply-ServerFilters })
 
 $textBoxSearchVM.Add_GotFocus({
-    if ($textBoxSearchVM.Text -eq '🔍 Search VMs...') {
+    if ($textBoxSearchVM.Text -eq 'Search VMs...') {
         $textBoxSearchVM.Text = ''
-        $textBoxSearchVM.ForeColor = [System.Drawing.Color]::Black
+        $textBoxSearchVM.ForeColor = $script:ActiveTextColor
     }
 })
 $textBoxSearchVM.Add_LostFocus({
     if ([string]::IsNullOrWhiteSpace($textBoxSearchVM.Text)) {
-        $textBoxSearchVM.Text = '🔍 Search VMs...'
-        $textBoxSearchVM.ForeColor = [System.Drawing.Color]::Gray
+        $textBoxSearchVM.Text = 'Search VMs...'
+        $textBoxSearchVM.ForeColor = $script:PlaceholderColor
     }
 })
 $textBoxSearchVM.Add_TextChanged({ Apply-VMListFilters })
 
 $textBoxSearchSnapshot.Add_GotFocus({
-    if ($textBoxSearchSnapshot.Text -eq '🔍 Search snapshots...') {
-        $textBoxSnapshot.Text = ''
-        $textBoxSearchSnapshot.ForeColor = [System.Drawing.Color]::Black
+    if ($textBoxSearchSnapshot.Text -eq 'Search snapshots...') {
+        $textBoxSearchSnapshot.Text = ''
+        $textBoxSearchSnapshot.ForeColor = $script:ActiveTextColor
     }
 })
 $textBoxSearchSnapshot.Add_LostFocus({
     if ([string]::IsNullOrWhiteSpace($textBoxSearchSnapshot.Text)) {
-        $textBoxSearchSnapshot.Text = '🔍 Search snapshots...'
-        $textBoxSearchSnapshot.ForeColor = [System.Drawing.Color]::Gray
+        $textBoxSearchSnapshot.Text = 'Search snapshots...'
+        $textBoxSearchSnapshot.ForeColor = $script:PlaceholderColor
     }
 })
 $textBoxSearchSnapshot.Add_TextChanged({ Apply-SnapshotFilters })
@@ -485,7 +488,7 @@ $comboBoxAgeFilter.Add_SelectedIndexChanged({ Apply-SnapshotFilters })
 # Context menu for server grid (favorites)
 $contextMenuServer = New-Object System.Windows.Forms.ContextMenuStrip
 $menuItemAddFav = New-Object System.Windows.Forms.ToolStripMenuItem
-$menuItemAddFav.Text = "⭐ Add to Favorites"
+$menuItemAddFav.Text = "Add to Favorites"
 $menuItemAddFav.Add_Click({
     if ($dataGridServer.SelectedRows.Count -gt 0) {
         $row = $dataGridServer.SelectedRows[0]

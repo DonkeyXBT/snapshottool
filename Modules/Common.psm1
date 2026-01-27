@@ -86,7 +86,15 @@ function Update-Status {
 
     if ($StatusLabel) {
         $StatusLabel.Text = $Message
-        $StatusLabel.ForeColor = [System.Drawing.Color]::FromName($Color)
+        # Map color names to dark-theme-friendly values
+        $mappedColor = switch ($Color) {
+            'Blue'   { [System.Drawing.Color]::FromArgb(96, 165, 250) }   # Bright blue
+            'Green'  { [System.Drawing.Color]::FromArgb(74, 222, 128) }   # Bright green
+            'Red'    { [System.Drawing.Color]::FromArgb(248, 113, 113) }  # Soft red
+            'Orange' { [System.Drawing.Color]::FromArgb(251, 191, 36) }   # Amber
+            default  { [System.Drawing.Color]::FromArgb(148, 163, 184) }  # Gray fallback
+        }
+        $StatusLabel.ForeColor = $mappedColor
         $StatusLabel.Parent.Refresh()
     }
 }
