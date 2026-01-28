@@ -86,8 +86,15 @@ $buttonSelectAll = Find-ControlByName -Parent $form -Name 'buttonSelectAll'
 $buttonDeselectAll = Find-ControlByName -Parent $form -Name 'buttonDeselectAll'
 $labelSummary = Find-ControlByName -Parent $form -Name 'labelSummary'
 
-# Initialize cache files
+# Initialize cache files and nodes history
 Initialize-CacheFiles -ScriptPath $scriptPath
+Initialize-NodesHistory -ScriptPath $scriptPath
+
+# Load recent nodes into the textbox
+$recentNodes = Get-RecentNodes -ScriptPath $scriptPath -Count 1
+if ($recentNodes.Count -gt 0) {
+    $textBoxNodes.Text = $recentNodes -join ', '
+}
 
 # Apply modern scrollbars to DataGridViews and ListBox
 Add-ModernScrollbar -DataGrid $dataGridServer -ParentPanel $panelServer
@@ -687,6 +694,9 @@ $buttonConnect.Add_Click({
 
     $script:hyperVNodes = $nodeInput -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' }
     Write-Log "Connecting to nodes: $($script:hyperVNodes -join ', ')" "INFO"
+
+    # Save nodes to history
+    Save-NodesHistory -Nodes $script:hyperVNodes -ScriptPath $scriptPath
 
     # Try to load from cache first for instant display
     $serverCache = Load-ServerInfoCache -ScriptPath $scriptPath
