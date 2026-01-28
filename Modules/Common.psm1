@@ -211,4 +211,352 @@ function Save-Favorites {
     }
 }
 
-Export-ModuleMember -Function Initialize-LogFile, Write-Log, Send-TeamsNotification, Update-Status, Export-ToCSV, Initialize-Favorites, Add-Favorite, Remove-Favorite, Get-Favorites, Test-IsFavorite
+# ═══════════════════════════════════════════════════════════════════════════════
+# JSON Cache Management for Server Info and Snapshots
+# ═══════════════════════════════════════════════════════════════════════════════
+
+$script:ServerInfoCacheFile = $null
+$script:SnapshotsCacheFile = $null
+
+function Initialize-CacheFiles {
+    param([string]$ScriptPath)
+
+    $cachePath = if ($ScriptPath) { $ScriptPath } else { $PWD.Path }
+    $script:ServerInfoCacheFile = Join-Path $cachePath "serverinfo.json"
+    $script:SnapshotsCacheFile = Join-Path $cachePath "snapshots.json"
+}
+
+function Save-ServerInfoCache {
+    param(
+        [array]$ServerInfo,
+        [string]$ScriptPath
+    )
+
+    try {
+        if (-not $script:ServerInfoCacheFile) {
+            Initialize-CacheFiles -ScriptPath $ScriptPath
+        }
+
+        # Create cache object with metadata
+        $cacheData = @{
+            LastUpdated = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+            Count = $ServerInfo.Count
+            Data = @($ServerInfo | ForEach-Object {
+                @{
+                    Node = $_.Node
+                    VMName = $_.VMName
+                    State = [string]$_.State
+                    GuestOS = $_.GuestOS
+                    IPAddresses = $_.IPAddresses
+                    MemoryTotalGB = $_.MemoryTotalGB
+                    MemoryUsedGB = $_.MemoryUsedGB
+                    MemoryAvailableGB = $_.MemoryAvailableGB
+                    ProcessorCount = $_.ProcessorCount
+                    DiskSizeGB = $_.DiskSizeGB
+                    DiskUsedGB = $_.DiskUsedGB
+                }
+            })
+        }
+
+        $cacheData | ConvertTo-Json -Depth 10 | Set-Content -Path $script:ServerInfoCacheFile -Encoding UTF8
+        Write-Log "Server info cache saved: $($ServerInfo.Count) entries" "INFO"
+    }
+    catch {
+        Write-Log "Failed to save server info cache: $($_.Exception.Message)" "ERROR"
+    }
+}
+
+function Load-ServerInfoCache {
+    param([string]$ScriptPath)
+
+    try {
+        if (-not $script:ServerInfoCacheFile) {
+            Initialize-CacheFiles -ScriptPath $ScriptPath
+        }
+
+        if (Test-Path $script:ServerInfoCacheFile) {
+            $cacheContent = Get-Content $script:ServerInfoCacheFile -Raw | ConvertFrom-Json
+
+            # Convert back to PSCustomObject array
+            $serverInfo = @($cacheContent.Data | ForEach-Object {
+                [PSCustomObject]@{
+                    Node = $_.Node
+                    VMName = $_.VMName
+                    State = $_.State
+                    GuestOS = $_.GuestOS
+                    IPAddresses = $_.IPAddresses
+                    MemoryTotalGB = $_.MemoryTotalGB
+                    MemoryUsedGB = $_.MemoryUsedGB
+                    MemoryAvailableGB = $_.MemoryAvailableGB
+                    ProcessorCount = $_.ProcessorCount
+                    DiskSizeGB = $_.DiskSizeGB
+                    DiskUsedGB = $_.DiskUsedGB
+                }
+            })
+
+            Write-Log "Server info cache loaded: $($serverInfo.Count) entries (from $($cacheContent.LastUpdated))" "INFO"
+            return @{
+                Success = $true
+                Data = $serverInfo
+                LastUpdated = $cacheContent.LastUpdated
+            }
+        }
+    }
+    catch {
+        Write-Log "Failed to load server info cache: $($_.Exception.Message)" "WARNING"
+    }
+
+    return @{ Success = $false; Data = @(); LastUpdated = $null }
+}
+
+function Save-SnapshotsCache {
+    param(
+        [array]$Snapshots,
+        [string]$ScriptPath
+    )
+
+    try {
+        if (-not $script:SnapshotsCacheFile) {
+            Initialize-CacheFiles -ScriptPath $ScriptPath
+        }
+
+        # Create cache object with metadata (exclude Snapshot object as it's not serializable)
+        $cacheData = @{
+            LastUpdated = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+            Count = $Snapshots.Count
+            Data = @($Snapshots | ForEach-Object {
+                @{
+                    Node = $_.Node
+                    VMName = $_.VMName
+                    SnapshotName = $_.SnapshotName
+                    CreationTime = $_.CreationTime.ToString("yyyy-MM-dd HH:mm:ss")
+                    Age = $_.Age
+                    AgeDays = $_.AgeDays
+                }
+            })
+        }
+
+        $cacheData | ConvertTo-Json -Depth 10 | Set-Content -Path $script:SnapshotsCacheFile -Encoding UTF8
+        Write-Log "Snapshots cache saved: $($Snapshots.Count) entries" "INFO"
+    }
+    catch {
+        Write-Log "Failed to save snapshots cache: $($_.Exception.Message)" "ERROR"
+    }
+}
+
+function Load-SnapshotsCache {
+    param([string]$ScriptPath)
+
+    try {
+        if (-not $script:SnapshotsCacheFile) {
+            Initialize-CacheFiles -ScriptPath $ScriptPath
+        }
+
+        if (Test-Path $script:SnapshotsCacheFile) {
+            $cacheContent = Get-Content $script:SnapshotsCacheFile -Raw | ConvertFrom-Json
+
+            # Convert back to PSCustomObject array
+            $snapshots = @($cacheContent.Data | ForEach-Object {
+                $creationTime = [DateTime]::Parse($_.CreationTime)
+                [PSCustomObject]@{
+                    Node = $_.Node
+                    VMName = $_.VMName
+                    SnapshotName = $_.SnapshotName
+                    CreationTime = $creationTime
+                    Age = $_.Age
+                    AgeDays = $_.AgeDays
+                    Snapshot = $null  # Can't restore the actual object, needs refresh for deletion
+                }
+            })
+
+            Write-Log "Snapshots cache loaded: $($snapshots.Count) entries (from $($cacheContent.LastUpdated))" "INFO"
+            return @{
+                Success = $true
+                Data = $snapshots
+                LastUpdated = $cacheContent.LastUpdated
+            }
+        }
+    }
+    catch {
+        Write-Log "Failed to load snapshots cache: $($_.Exception.Message)" "WARNING"
+    }
+
+    return @{ Success = $false; Data = @(); LastUpdated = $null }
+}
+
+function Get-CacheAge {
+    param(
+        [string]$CacheType,
+        [string]$ScriptPath
+    )
+
+    try {
+        if (-not $script:ServerInfoCacheFile) {
+            Initialize-CacheFiles -ScriptPath $ScriptPath
+        }
+
+        $cacheFile = if ($CacheType -eq 'ServerInfo') { $script:ServerInfoCacheFile } else { $script:SnapshotsCacheFile }
+
+        if (Test-Path $cacheFile) {
+            $cacheContent = Get-Content $cacheFile -Raw | ConvertFrom-Json
+            $lastUpdated = [DateTime]::Parse($cacheContent.LastUpdated)
+            $age = (Get-Date) - $lastUpdated
+            return @{
+                Exists = $true
+                LastUpdated = $cacheContent.LastUpdated
+                AgeMinutes = [Math]::Round($age.TotalMinutes, 1)
+                AgeText = if ($age.TotalHours -ge 1) {
+                    "{0}h {1}m ago" -f [Math]::Floor($age.TotalHours), $age.Minutes
+                } else {
+                    "{0}m ago" -f [Math]::Floor($age.TotalMinutes)
+                }
+            }
+        }
+    }
+    catch { }
+
+    return @{ Exists = $false; LastUpdated = $null; AgeMinutes = -1; AgeText = "N/A" }
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Node History Management - Stores all nodes the user has ever connected to
+# ═══════════════════════════════════════════════════════════════════════════════
+
+$script:NodesHistoryFile = $null
+
+function Initialize-NodesHistory {
+    param([string]$ScriptPath)
+
+    $historyPath = if ($ScriptPath) { $ScriptPath } else { $PWD.Path }
+    $script:NodesHistoryFile = Join-Path $historyPath "nodes.json"
+}
+
+function Save-NodesHistory {
+    param(
+        [array]$Nodes,
+        [string]$ScriptPath
+    )
+
+    try {
+        if (-not $script:NodesHistoryFile) {
+            Initialize-NodesHistory -ScriptPath $ScriptPath
+        }
+
+        # Load existing history
+        $existingHistory = @()
+        if (Test-Path $script:NodesHistoryFile) {
+            $content = Get-Content $script:NodesHistoryFile -Raw | ConvertFrom-Json
+            if ($content.Nodes) {
+                $existingHistory = @($content.Nodes)
+            }
+        }
+
+        # Merge new nodes with existing (avoid duplicates, case-insensitive)
+        $allNodes = @()
+        $seenNodes = @{}
+
+        # Add existing nodes first (preserves order, most recent at top)
+        foreach ($node in $existingHistory) {
+            $nodeLower = $node.Name.ToLower()
+            if (-not $seenNodes.ContainsKey($nodeLower)) {
+                $seenNodes[$nodeLower] = $true
+                $allNodes += $node
+            }
+        }
+
+        # Add new nodes (update LastUsed if exists, add if new)
+        $now = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+        foreach ($nodeName in $Nodes) {
+            $nodeLower = $nodeName.ToLower()
+            $existingIndex = -1
+
+            for ($i = 0; $i -lt $allNodes.Count; $i++) {
+                if ($allNodes[$i].Name.ToLower() -eq $nodeLower) {
+                    $existingIndex = $i
+                    break
+                }
+            }
+
+            if ($existingIndex -ge 0) {
+                # Update existing node's last used time and move to top
+                $existingNode = $allNodes[$existingIndex]
+                $existingNode.LastUsed = $now
+                $existingNode.UseCount = [int]$existingNode.UseCount + 1
+                $allNodes = @($existingNode) + @($allNodes | Where-Object { $_.Name.ToLower() -ne $nodeLower })
+            } else {
+                # Add new node at top
+                $newNode = @{
+                    Name = $nodeName
+                    FirstAdded = $now
+                    LastUsed = $now
+                    UseCount = 1
+                }
+                $allNodes = @($newNode) + $allNodes
+            }
+        }
+
+        # Save updated history
+        $historyData = @{
+            LastUpdated = $now
+            TotalNodes = $allNodes.Count
+            Nodes = $allNodes
+        }
+
+        $historyData | ConvertTo-Json -Depth 10 | Set-Content -Path $script:NodesHistoryFile -Encoding UTF8
+        Write-Log "Nodes history saved: $($allNodes.Count) total nodes" "INFO"
+    }
+    catch {
+        Write-Log "Failed to save nodes history: $($_.Exception.Message)" "ERROR"
+    }
+}
+
+function Load-NodesHistory {
+    param([string]$ScriptPath)
+
+    try {
+        if (-not $script:NodesHistoryFile) {
+            Initialize-NodesHistory -ScriptPath $ScriptPath
+        }
+
+        if (Test-Path $script:NodesHistoryFile) {
+            $content = Get-Content $script:NodesHistoryFile -Raw | ConvertFrom-Json
+
+            $nodes = @($content.Nodes | ForEach-Object {
+                [PSCustomObject]@{
+                    Name = $_.Name
+                    FirstAdded = $_.FirstAdded
+                    LastUsed = $_.LastUsed
+                    UseCount = [int]$_.UseCount
+                }
+            })
+
+            Write-Log "Nodes history loaded: $($nodes.Count) nodes" "INFO"
+            return @{
+                Success = $true
+                Nodes = $nodes
+                LastUpdated = $content.LastUpdated
+            }
+        }
+    }
+    catch {
+        Write-Log "Failed to load nodes history: $($_.Exception.Message)" "WARNING"
+    }
+
+    return @{ Success = $false; Nodes = @(); LastUpdated = $null }
+}
+
+function Get-RecentNodes {
+    param(
+        [string]$ScriptPath,
+        [int]$Count = 10
+    )
+
+    $history = Load-NodesHistory -ScriptPath $ScriptPath
+    if ($history.Success) {
+        # Return most recently used nodes
+        return @($history.Nodes | Select-Object -First $Count | ForEach-Object { $_.Name })
+    }
+    return @()
+}
+
+Export-ModuleMember -Function Initialize-LogFile, Write-Log, Send-TeamsNotification, Update-Status, Export-ToCSV, Initialize-Favorites, Add-Favorite, Remove-Favorite, Get-Favorites, Test-IsFavorite, Initialize-CacheFiles, Save-ServerInfoCache, Load-ServerInfoCache, Save-SnapshotsCache, Load-SnapshotsCache, Get-CacheAge, Initialize-NodesHistory, Save-NodesHistory, Load-NodesHistory, Get-RecentNodes

@@ -44,6 +44,302 @@ function Enable-DoubleBuffering {
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# Modern Custom Scrollbar - Creates a thin, modern-styled scrollbar overlay
+# ═══════════════════════════════════════════════════════════════════════════════
+$script:ScrollbarTrackColor = [System.Drawing.Color]::FromArgb(30, 32, 42)
+$script:ScrollbarThumbColor = [System.Drawing.Color]::FromArgb(70, 72, 90)
+$script:ScrollbarThumbHover = [System.Drawing.Color]::FromArgb(99, 102, 241)
+$script:ScrollbarWidth = 8
+
+function Add-ModernScrollbar {
+    param(
+        [System.Windows.Forms.DataGridView]$DataGrid,
+        [System.Windows.Forms.Panel]$ParentPanel
+    )
+
+    # Create scrollbar track panel
+    $scrollTrack = New-Object System.Windows.Forms.Panel
+    $scrollTrack.Width = $script:ScrollbarWidth
+    $scrollTrack.BackColor = $script:ScrollbarTrackColor
+    $scrollTrack.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Right
+
+    # Position scrollbar at the right edge of the DataGrid
+    $scrollTrack.Location = New-Object System.Drawing.Point(($DataGrid.Location.X + $DataGrid.Width - $script:ScrollbarWidth), $DataGrid.Location.Y)
+    $scrollTrack.Height = $DataGrid.Height
+    $scrollTrack.Name = 'modernScrollTrack'
+
+    # Create scrollbar thumb
+    $scrollThumb = New-Object System.Windows.Forms.Panel
+    $scrollThumb.Width = $script:ScrollbarWidth - 2
+    $scrollThumb.BackColor = $script:ScrollbarThumbColor
+    $scrollThumb.Location = New-Object System.Drawing.Point(1, 0)
+    $scrollThumb.Height = 50  # Initial height, will be calculated
+    $scrollThumb.Name = 'modernScrollThumb'
+    $scrollThumb.Cursor = [System.Windows.Forms.Cursors]::Hand
+
+    # Round corners effect using region (approximate with smaller height adjustment)
+    $scrollTrack.Controls.Add($scrollThumb)
+
+    # Store references for event handlers
+    $scrollThumb.Tag = @{
+        DataGrid = $DataGrid
+        Track = $scrollTrack
+        IsDragging = $false
+        DragStartY = 0
+        DragStartScrollY = 0
+    }
+
+    # Thumb hover effect
+    $scrollThumb.Add_MouseEnter({
+        param($sender, $e)
+        $sender.BackColor = $script:ScrollbarThumbHover
+    })
+    $scrollThumb.Add_MouseLeave({
+        param($sender, $e)
+        if (-not $sender.Tag.IsDragging) {
+            $sender.BackColor = $script:ScrollbarThumbColor
+        }
+    })
+
+    # Thumb drag functionality
+    $scrollThumb.Add_MouseDown({
+        param($sender, $e)
+        if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
+            $sender.Tag.IsDragging = $true
+            $sender.Tag.DragStartY = $e.Y
+            $sender.Tag.DragStartScrollY = $sender.Location.Y
+            $sender.BackColor = $script:ScrollbarThumbHover
+        }
+    })
+
+    $scrollThumb.Add_MouseMove({
+        param($sender, $e)
+        if ($sender.Tag.IsDragging) {
+            $track = $sender.Tag.Track
+            $grid = $sender.Tag.DataGrid
+
+            # Calculate new thumb position
+            $deltaY = $e.Y - $sender.Tag.DragStartY
+            $newY = $sender.Tag.DragStartScrollY + $deltaY
+
+            # Clamp to track bounds
+            $maxY = $track.Height - $sender.Height
+            $newY = [Math]::Max(0, [Math]::Min($newY, $maxY))
+
+            $sender.Location = New-Object System.Drawing.Point($sender.Location.X, $newY)
+
+            # Scroll the DataGrid
+            if ($grid.RowCount -gt 0 -and $maxY -gt 0) {
+                $scrollRatio = $newY / $maxY
+                $targetRow = [Math]::Floor($scrollRatio * ($grid.RowCount - 1))
+                $targetRow = [Math]::Max(0, [Math]::Min($targetRow, $grid.RowCount - 1))
+                $grid.FirstDisplayedScrollingRowIndex = $targetRow
+            }
+        }
+    })
+
+    $scrollThumb.Add_MouseUp({
+        param($sender, $e)
+        $sender.Tag.IsDragging = $false
+        $sender.BackColor = $script:ScrollbarThumbColor
+    })
+
+    # Track click to jump
+    $scrollTrack.Add_MouseClick({
+        param($sender, $e)
+        $thumb = $sender.Controls['modernScrollThumb']
+        $grid = $thumb.Tag.DataGrid
+
+        if ($grid.RowCount -gt 0) {
+            $clickRatio = $e.Y / $sender.Height
+            $targetRow = [Math]::Floor($clickRatio * ($grid.RowCount - 1))
+            $targetRow = [Math]::Max(0, [Math]::Min($targetRow, $grid.RowCount - 1))
+            $grid.FirstDisplayedScrollingRowIndex = $targetRow
+        }
+    })
+
+    # Update thumb position and size when grid scrolls or resizes
+    $updateScrollbar = {
+        param($grid, $thumb, $track)
+
+        if ($grid.RowCount -eq 0) {
+            $thumb.Visible = $false
+            return
+        }
+
+        $visibleRows = [Math]::Max(1, $grid.DisplayedRowCount($true))
+        $totalRows = $grid.RowCount
+
+        if ($totalRows -le $visibleRows) {
+            $thumb.Visible = $false
+            return
+        }
+
+        $thumb.Visible = $true
+
+        # Calculate thumb height
+        $thumbHeight = [Math]::Max(30, [Math]::Floor(($visibleRows / $totalRows) * $track.Height))
+        $thumb.Height = $thumbHeight
+
+        # Calculate thumb position
+        $scrollableRows = $totalRows - $visibleRows
+        $currentRow = $grid.FirstDisplayedScrollingRowIndex
+        $scrollRatio = if ($scrollableRows -gt 0) { $currentRow / $scrollableRows } else { 0 }
+        $maxThumbY = $track.Height - $thumbHeight
+        $thumbY = [Math]::Floor($scrollRatio * $maxThumbY)
+
+        $thumb.Location = New-Object System.Drawing.Point(1, $thumbY)
+    }.GetNewClosure()
+
+    # Hook into DataGrid scroll event
+    $DataGrid.Add_Scroll({
+        param($sender, $e)
+        $track = $sender.Parent.Controls['modernScrollTrack']
+        if ($track) {
+            $thumb = $track.Controls['modernScrollThumb']
+            if ($thumb -and $thumb.Tag) {
+                & $updateScrollbar $sender $thumb $track
+            }
+        }
+    })
+
+    # Hook into DataGrid DataSourceChanged to update scrollbar
+    $DataGrid.Add_DataSourceChanged({
+        param($sender, $e)
+        $track = $sender.Parent.Controls['modernScrollTrack']
+        if ($track) {
+            $thumb = $track.Controls['modernScrollThumb']
+            if ($thumb -and $thumb.Tag) {
+                & $updateScrollbar $sender $thumb $track
+            }
+        }
+    })
+
+    # Initial update timer (for when data loads)
+    $initTimer = New-Object System.Windows.Forms.Timer
+    $initTimer.Interval = 100
+    $initTimer.Add_Tick({
+        param($sender, $e)
+        $sender.Stop()
+        $track = $DataGrid.Parent.Controls['modernScrollTrack']
+        if ($track) {
+            $thumb = $track.Controls['modernScrollThumb']
+            if ($thumb -and $thumb.Tag) {
+                & $updateScrollbar $DataGrid $thumb $track
+            }
+        }
+        $sender.Dispose()
+    }.GetNewClosure())
+    $initTimer.Start()
+
+    # Hide native scrollbar by adjusting grid width
+    $DataGrid.ScrollBars = [System.Windows.Forms.ScrollBars]::None
+
+    $ParentPanel.Controls.Add($scrollTrack)
+    $scrollTrack.BringToFront()
+
+    return $scrollTrack
+}
+
+function Add-ModernListBoxScrollbar {
+    param(
+        [System.Windows.Forms.ListBox]$ListBox,
+        [System.Windows.Forms.Panel]$ParentPanel
+    )
+
+    # Create scrollbar track panel
+    $scrollTrack = New-Object System.Windows.Forms.Panel
+    $scrollTrack.Width = $script:ScrollbarWidth
+    $scrollTrack.BackColor = $script:ScrollbarTrackColor
+    $scrollTrack.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Right
+
+    # Position scrollbar at the right edge of the ListBox
+    $scrollTrack.Location = New-Object System.Drawing.Point(($ListBox.Location.X + $ListBox.Width - $script:ScrollbarWidth), $ListBox.Location.Y)
+    $scrollTrack.Height = $ListBox.Height
+    $scrollTrack.Name = 'modernListScrollTrack'
+
+    # Create scrollbar thumb
+    $scrollThumb = New-Object System.Windows.Forms.Panel
+    $scrollThumb.Width = $script:ScrollbarWidth - 2
+    $scrollThumb.BackColor = $script:ScrollbarThumbColor
+    $scrollThumb.Location = New-Object System.Drawing.Point(1, 0)
+    $scrollThumb.Height = 50
+    $scrollThumb.Name = 'modernListScrollThumb'
+    $scrollThumb.Cursor = [System.Windows.Forms.Cursors]::Hand
+
+    $scrollTrack.Controls.Add($scrollThumb)
+
+    # Store references
+    $scrollThumb.Tag = @{
+        ListBox = $ListBox
+        Track = $scrollTrack
+        IsDragging = $false
+        DragStartY = 0
+        DragStartScrollY = 0
+    }
+
+    # Thumb hover effect
+    $scrollThumb.Add_MouseEnter({
+        param($sender, $e)
+        $sender.BackColor = $script:ScrollbarThumbHover
+    })
+    $scrollThumb.Add_MouseLeave({
+        param($sender, $e)
+        if (-not $sender.Tag.IsDragging) {
+            $sender.BackColor = $script:ScrollbarThumbColor
+        }
+    })
+
+    # Thumb drag
+    $scrollThumb.Add_MouseDown({
+        param($sender, $e)
+        if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
+            $sender.Tag.IsDragging = $true
+            $sender.Tag.DragStartY = $e.Y
+            $sender.Tag.DragStartScrollY = $sender.Location.Y
+            $sender.BackColor = $script:ScrollbarThumbHover
+        }
+    })
+
+    $scrollThumb.Add_MouseMove({
+        param($sender, $e)
+        if ($sender.Tag.IsDragging) {
+            $track = $sender.Tag.Track
+            $listBox = $sender.Tag.ListBox
+
+            $deltaY = $e.Y - $sender.Tag.DragStartY
+            $newY = $sender.Tag.DragStartScrollY + $deltaY
+
+            $maxY = $track.Height - $sender.Height
+            $newY = [Math]::Max(0, [Math]::Min($newY, $maxY))
+
+            $sender.Location = New-Object System.Drawing.Point($sender.Location.X, $newY)
+
+            if ($listBox.Items.Count -gt 0 -and $maxY -gt 0) {
+                $scrollRatio = $newY / $maxY
+                $targetIndex = [Math]::Floor($scrollRatio * ($listBox.Items.Count - 1))
+                $targetIndex = [Math]::Max(0, [Math]::Min($targetIndex, $listBox.Items.Count - 1))
+                $listBox.TopIndex = $targetIndex
+            }
+        }
+    })
+
+    $scrollThumb.Add_MouseUp({
+        param($sender, $e)
+        $sender.Tag.IsDragging = $false
+        $sender.BackColor = $script:ScrollbarThumbColor
+    })
+
+    # Hide native scrollbar
+    $ListBox.HorizontalScrollbar = $false
+
+    $ParentPanel.Controls.Add($scrollTrack)
+    $scrollTrack.BringToFront()
+
+    return $scrollTrack
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # Main Form
 # ═══════════════════════════════════════════════════════════════════════════════
 function New-MainForm {
@@ -944,4 +1240,4 @@ function Find-ControlByName {
     return $null
 }
 
-Export-ModuleMember -Function New-MainForm, New-CustomTitleBar, New-ConnectionPanel, New-MenuPanel, New-ServerManagementPanel, New-SnapshotManagementPanel, Find-ControlByName
+Export-ModuleMember -Function New-MainForm, New-CustomTitleBar, New-ConnectionPanel, New-MenuPanel, New-ServerManagementPanel, New-SnapshotManagementPanel, Find-ControlByName, Add-ModernScrollbar, Add-ModernListBoxScrollbar

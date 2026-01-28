@@ -86,6 +86,39 @@ $buttonSelectAll = Find-ControlByName -Parent $form -Name 'buttonSelectAll'
 $buttonDeselectAll = Find-ControlByName -Parent $form -Name 'buttonDeselectAll'
 $labelSummary = Find-ControlByName -Parent $form -Name 'labelSummary'
 
+# Initialize cache files and nodes history
+Initialize-CacheFiles -ScriptPath $scriptPath
+Initialize-NodesHistory -ScriptPath $scriptPath
+
+# Load recent nodes into the textbox
+$recentNodes = Get-RecentNodes -ScriptPath $scriptPath -Count 1
+if ($recentNodes.Count -gt 0) {
+    $textBoxNodes.Text = $recentNodes -join ', '
+}
+
+# Apply modern scrollbars to DataGridViews and ListBox
+Add-ModernScrollbar -DataGrid $dataGridServer -ParentPanel $panelServer
+Add-ModernScrollbar -DataGrid $dataGridSnapshots -ParentPanel $panelSnapshot
+
+# Find the sidebar panel for the ListBox scrollbar
+$sidebarPanel = $null
+foreach ($ctrl in $panelSnapshot.Controls) {
+    if ($ctrl -is [System.Windows.Forms.Panel] -and $ctrl.Controls['listBoxVMs']) {
+        $sidebarPanel = $ctrl
+        break
+    }
+    # Check nested controls
+    foreach ($nested in $ctrl.Controls) {
+        if ($nested.Name -eq 'listBoxVMs') {
+            $sidebarPanel = $ctrl
+            break
+        }
+    }
+}
+if ($sidebarPanel) {
+    Add-ModernListBoxScrollbar -ListBox $listBoxVMs -ParentPanel $sidebarPanel
+}
+
 # Timer for background operations
 $timer = New-Object System.Windows.Forms.Timer
 $timer.Interval = 500
@@ -100,6 +133,11 @@ $timer.Add_Tick({
                 $script:allSnapshots = $result.Snapshots
                 $script:serverInfo = $result.ServerInfo
 
+                # Save snapshots to cache
+                if ($script:allSnapshots.Count -gt 0) {
+                    Save-SnapshotsCache -Snapshots $script:allSnapshots -ScriptPath $scriptPath
+                }
+
                 Write-Log "Successfully loaded $($script:allVMs.Count) VMs and $($script:allSnapshots.Count) snapshots" "SUCCESS"
 
                 $buttonServerMgmt.Enabled = $true
@@ -107,6 +145,16 @@ $timer.Add_Tick({
                 $buttonBackToMenu.Enabled = $true
 
                 Update-Status -StatusLabel $labelStatus -Message "Connected successfully to $($script:hyperVNodes.Count) node(s) - $($script:allVMs.Count) VMs found" -Color "Green"
+
+                # Refresh current view if showing cached data
+                if ($script:currentView -eq "server" -and $script:serverInfo.Count -gt 0) {
+                    $script:filteredServerInfo = $script:serverInfo
+                    Refresh-ServerGrid
+                }
+                elseif ($script:currentView -eq "snapshot" -and $script:allSnapshots.Count -gt 0) {
+                    $script:filteredSnapshots = $script:allSnapshots
+                    Refresh-SnapshotGrid
+                }
             }
             else {
                 Update-Status -StatusLabel $labelStatus -Message "Failed to load data" -Color "Red"
@@ -345,31 +393,74 @@ function Load-SnapshotManagementData {
     Update-Status -StatusLabel $labelStatus -Message "Loaded $($script:allSnapshots.Count) snapshots from $($script:allVMs.Count) VMs" -Color "Green"
 }
 
-# Get server information in background
+# Get server information in background with real-time progressive updates
 function Get-ServerInformation {
-    Update-Status -StatusLabel $labelStatus -Message "Gathering server information in background..." -Color "Blue"
+    Update-Status -StatusLabel $labelStatus -Message "Gathering server information (0/$($script:allVMs.Count) VMs)..." -Color "Blue"
     $buttonRefreshServer.Enabled = $false
+
+    # Create synchronized hashtable for progress tracking
+    $script:serverSyncHash = [hashtable]::Synchronized(@{
+        TotalVMs = $script:allVMs.Count
+        ProcessedVMs = 0
+        ServerInfo = [System.Collections.ArrayList]::Synchronized([System.Collections.ArrayList]::new())
+        IsComplete = $false
+        CurrentVM = ""
+        LastDisplayedCount = 0
+    })
 
     $script:powerShell = [PowerShell]::Create()
     [void]$script:powerShell.AddScript({
-        param($VMData, $ModulePath)
+        param($VMData, $ModulePath, $SyncHash)
         Import-Module $ModulePath -Force
-        return Get-ServerInformationAsync -VMData $VMData
+        return Get-ServerInformationProgressive -VMData $VMData -SyncHash $SyncHash
     })
     [void]$script:powerShell.AddArgument($script:allVMs)
     [void]$script:powerShell.AddArgument((Join-Path $scriptPath "Modules\ServerManagement.psm1"))
+    [void]$script:powerShell.AddArgument($script:serverSyncHash)
 
     $script:runspace = $script:powerShell.BeginInvoke()
 
-    $localTimer = New-Object System.Windows.Forms.Timer
-    $localTimer.Interval = 500
-    $localTimer.Add_Tick({
-        if ($script:powerShell -ne $null -and $script:powerShell.InvocationStateInfo.State -eq 'Completed') {
+    $script:serverInfoTimer = New-Object System.Windows.Forms.Timer
+    $script:serverInfoTimer.Interval = 300  # Faster updates for real-time feel
+    $script:serverInfoTimer.Add_Tick({
+        $syncHash = $script:serverSyncHash
+
+        # Update progress in status bar
+        if ($syncHash.ProcessedVMs -gt 0) {
+            $currentVM = if ($syncHash.CurrentVM) { " - $($syncHash.CurrentVM)" } else { "" }
+            Update-Status -StatusLabel $labelStatus -Message "Loading server info ($($syncHash.ProcessedVMs)/$($syncHash.TotalVMs) VMs)$currentVM..." -Color "Blue"
+        }
+
+        # Progressively update the grid with new data
+        $currentCount = $syncHash.ServerInfo.Count
+        if ($currentCount -gt $syncHash.LastDisplayedCount) {
+            # New data available - update the display
+            $script:serverInfo = @($syncHash.ServerInfo.ToArray())
+            $script:filteredServerInfo = $script:serverInfo
+            Refresh-ServerGrid
+
+            $syncHash.LastDisplayedCount = $currentCount
+        }
+
+        # Check if complete
+        if ($syncHash.IsComplete -or ($script:powerShell -ne $null -and $script:powerShell.InvocationStateInfo.State -eq 'Completed')) {
             try {
-                $script:serverInfo = $script:powerShell.EndInvoke($script:runspace)
-                $buttonRefreshServer.Enabled = $true
+                if ($script:powerShell -ne $null -and $script:powerShell.InvocationStateInfo.State -eq 'Completed') {
+                    $null = $script:powerShell.EndInvoke($script:runspace)
+                }
+
+                # Final update with all data
+                $script:serverInfo = @($syncHash.ServerInfo.ToArray())
                 $script:filteredServerInfo = $script:serverInfo
-                Load-ServerManagementData
+                $buttonRefreshServer.Enabled = $true
+
+                # Save to cache
+                if ($script:serverInfo.Count -gt 0) {
+                    Save-ServerInfoCache -ServerInfo $script:serverInfo -ScriptPath $scriptPath
+                }
+
+                Refresh-ServerGrid
+                Update-Status -StatusLabel $labelStatus -Message "Loaded information for $($script:serverInfo.Count) VMs" -Color "Green"
             }
             catch {
                 Update-Status -StatusLabel $labelStatus -Message "Error loading server information: $($_.Exception.Message)" -Color "Red"
@@ -381,42 +472,88 @@ function Get-ServerInformation {
                     $script:powerShell = $null
                 }
                 $script:runspace = $null
-                $localTimer.Stop()
-                $localTimer.Dispose()
+                if ($script:serverInfoTimer -ne $null) {
+                    $script:serverInfoTimer.Stop()
+                    $script:serverInfoTimer.Dispose()
+                    $script:serverInfoTimer = $null
+                }
             }
         }
     })
-    $localTimer.Start()
+    $script:serverInfoTimer.Start()
 }
 
-# Refresh snapshot data
+# Refresh snapshot data with real-time progressive updates
 function Refresh-SnapshotData {
     if ($script:allVMs.Count -eq 0) { return }
 
-    Update-Status -StatusLabel $labelStatus -Message "Loading snapshots..." -Color "Blue"
-    $dataGridSnapshots.DataSource = $null
+    Update-Status -StatusLabel $labelStatus -Message "Loading snapshots (0/$($script:allVMs.Count) VMs)..." -Color "Blue"
     $buttonRefreshSnapshot.Enabled = $false
+
+    # Create synchronized hashtable for progress tracking
+    $script:snapshotSyncHash = [hashtable]::Synchronized(@{
+        TotalVMs = $script:allVMs.Count
+        ProcessedVMs = 0
+        Snapshots = [System.Collections.ArrayList]::Synchronized([System.Collections.ArrayList]::new())
+        IsComplete = $false
+        CurrentVM = ""
+        LastDisplayedCount = 0
+    })
 
     $script:powerShell = [PowerShell]::Create()
     [void]$script:powerShell.AddScript({
-        param($VMData, $ModulePath)
+        param($VMData, $ModulePath, $SyncHash)
         Import-Module $ModulePath -Force
-        return Get-VMSnapshotsAsync -VMData $VMData
+        return Get-VMSnapshotsProgressive -VMData $VMData -SyncHash $SyncHash
     })
     [void]$script:powerShell.AddArgument($script:allVMs)
     [void]$script:powerShell.AddArgument((Join-Path $scriptPath "Modules\SnapshotManagement.psm1"))
+    [void]$script:powerShell.AddArgument($script:snapshotSyncHash)
 
     $script:runspace = $script:powerShell.BeginInvoke()
 
-    $localTimer = New-Object System.Windows.Forms.Timer
-    $localTimer.Interval = 500
-    $localTimer.Add_Tick({
-        if ($script:powerShell -ne $null -and $script:powerShell.InvocationStateInfo.State -eq 'Completed') {
+    $script:snapshotTimer = New-Object System.Windows.Forms.Timer
+    $script:snapshotTimer.Interval = 300  # Faster updates for real-time feel
+    $script:snapshotTimer.Add_Tick({
+        $syncHash = $script:snapshotSyncHash
+
+        # Update progress in status bar
+        if ($syncHash.ProcessedVMs -gt 0) {
+            $currentVM = if ($syncHash.CurrentVM) { " - $($syncHash.CurrentVM)" } else { "" }
+            $snapshotCount = $syncHash.Snapshots.Count
+            Update-Status -StatusLabel $labelStatus -Message "Loading snapshots ($($syncHash.ProcessedVMs)/$($syncHash.TotalVMs) VMs, $snapshotCount found)$currentVM..." -Color "Blue"
+        }
+
+        # Progressively update the grid with new data
+        $currentCount = $syncHash.Snapshots.Count
+        if ($currentCount -gt $syncHash.LastDisplayedCount) {
+            # New data available - update the display
+            $script:allSnapshots = @($syncHash.Snapshots.ToArray())
+            $script:filteredSnapshots = $script:allSnapshots
+            Refresh-SnapshotGrid
+
+            $syncHash.LastDisplayedCount = $currentCount
+        }
+
+        # Check if complete
+        if ($syncHash.IsComplete -or ($script:powerShell -ne $null -and $script:powerShell.InvocationStateInfo.State -eq 'Completed')) {
             try {
-                $script:allSnapshots = $script:powerShell.EndInvoke($script:runspace)
-                $buttonRefreshSnapshot.Enabled = $true
+                if ($script:powerShell -ne $null -and $script:powerShell.InvocationStateInfo.State -eq 'Completed') {
+                    $null = $script:powerShell.EndInvoke($script:runspace)
+                }
+
+                # Final update with all data
+                $script:allSnapshots = @($syncHash.Snapshots.ToArray())
                 $script:filteredSnapshots = $script:allSnapshots
+                $buttonRefreshSnapshot.Enabled = $true
+
+                # Save to cache
+                if ($script:allSnapshots.Count -gt 0) {
+                    Save-SnapshotsCache -Snapshots $script:allSnapshots -ScriptPath $scriptPath
+                }
+
                 Load-SnapshotManagementData
+                Update-Status -StatusLabel $labelStatus -Message "Loaded $($script:allSnapshots.Count) snapshots from $($script:allVMs.Count) VMs" -Color "Green"
             }
             catch {
                 Update-Status -StatusLabel $labelStatus -Message "Error loading snapshots: $($_.Exception.Message)" -Color "Red"
@@ -428,12 +565,15 @@ function Refresh-SnapshotData {
                     $script:powerShell = $null
                 }
                 $script:runspace = $null
-                $localTimer.Stop()
-                $localTimer.Dispose()
+                if ($script:snapshotTimer -ne $null) {
+                    $script:snapshotTimer.Stop()
+                    $script:snapshotTimer.Dispose()
+                    $script:snapshotTimer = $null
+                }
             }
         }
     })
-    $localTimer.Start()
+    $script:snapshotTimer.Start()
 }
 
 # Placeholder text management for search boxes (dark theme colors)
@@ -554,15 +694,45 @@ $buttonConnect.Add_Click({
 
     $script:hyperVNodes = $nodeInput -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' }
     Write-Log "Connecting to nodes: $($script:hyperVNodes -join ', ')" "INFO"
-    Update-Status -StatusLabel $labelStatus -Message "Connecting to nodes in background..." -Color "Blue"
+
+    # Save nodes to history
+    Save-NodesHistory -Nodes $script:hyperVNodes -ScriptPath $scriptPath
+
+    # Try to load from cache first for instant display
+    $serverCache = Load-ServerInfoCache -ScriptPath $scriptPath
+    $snapshotCache = Load-SnapshotsCache -ScriptPath $scriptPath
+
+    $cacheLoaded = $false
+    if ($serverCache.Success -and $serverCache.Data.Count -gt 0) {
+        $script:serverInfo = $serverCache.Data
+        $script:filteredServerInfo = $script:serverInfo
+        $cacheLoaded = $true
+        Write-Log "Loaded $($script:serverInfo.Count) VMs from server cache" "INFO"
+    }
+
+    if ($snapshotCache.Success -and $snapshotCache.Data.Count -gt 0) {
+        $script:allSnapshots = $snapshotCache.Data
+        $script:filteredSnapshots = $script:allSnapshots
+        Write-Log "Loaded $($script:allSnapshots.Count) snapshots from cache" "INFO"
+    }
+
+    if ($cacheLoaded) {
+        # Enable buttons with cached data while refreshing in background
+        $buttonServerMgmt.Enabled = $true
+        $buttonSnapshotMgmt.Enabled = $true
+        $buttonBackToMenu.Enabled = $true
+
+        $cacheAge = Get-CacheAge -CacheType 'ServerInfo' -ScriptPath $scriptPath
+        Update-Status -StatusLabel $labelStatus -Message "Loaded from cache ($($cacheAge.AgeText)) - Refreshing in background..." -Color "Blue"
+    } else {
+        Update-Status -StatusLabel $labelStatus -Message "Connecting to nodes in background..." -Color "Blue"
+        $buttonServerMgmt.Enabled = $false
+        $buttonSnapshotMgmt.Enabled = $false
+    }
 
     $script:allVMs = @()
-    $script:allSnapshots = @()
-    $script:serverInfo = @()
 
     $buttonConnect.Enabled = $false
-    $buttonServerMgmt.Enabled = $false
-    $buttonSnapshotMgmt.Enabled = $false
 
     $script:powerShell = [PowerShell]::Create()
     [void]$script:powerShell.AddScript({
