@@ -77,4 +77,65 @@ function Remove-VMSnapshotFromNode {
     }
 }
 
-Export-ModuleMember -Function Get-VMSnapshotsAsync, Remove-VMSnapshotFromNode
+# Progressive loading version for snapshots
+function Get-VMSnapshotsProgressive {
+    param(
+        [array]$VMData,
+        [hashtable]$SyncHash
+    )
+
+    $SyncHash.TotalVMs = $VMData.Count
+    $SyncHash.ProcessedVMs = 0
+    $SyncHash.Snapshots = [System.Collections.ArrayList]::Synchronized([System.Collections.ArrayList]::new())
+    $SyncHash.IsComplete = $false
+    $SyncHash.CurrentVM = ""
+
+    foreach ($vmData in $VMData) {
+        try {
+            $node = $vmData.Node
+            $vm = $vmData.VM
+            $SyncHash.CurrentVM = $vm.Name
+
+            if ($node -eq 'localhost' -or $node -eq $env:COMPUTERNAME) {
+                $snapshots = Get-VMSnapshot -VM $vm -ErrorAction SilentlyContinue
+            } else {
+                $snapshots = Get-VMSnapshot -VMName $vm.Name -ComputerName $node -ErrorAction SilentlyContinue
+            }
+
+            foreach ($snapshot in $snapshots) {
+                $age = (Get-Date) - $snapshot.CreationTime
+                $ageText = ""
+
+                if ($age.TotalDays -ge 1) {
+                    $ageText = "{0} days, {1} hours" -f [Math]::Floor($age.TotalDays), $age.Hours
+                } elseif ($age.TotalHours -ge 1) {
+                    $ageText = "{0} hours, {1} minutes" -f [Math]::Floor($age.TotalHours), $age.Minutes
+                } else {
+                    $ageText = "{0} minutes" -f [Math]::Floor($age.TotalMinutes)
+                }
+
+                $snapshotItem = [PSCustomObject]@{
+                    Node = $node
+                    VMName = $vm.Name
+                    SnapshotName = $snapshot.Name
+                    CreationTime = $snapshot.CreationTime
+                    Age = $ageText
+                    AgeDays = [Math]::Round($age.TotalDays, 2)
+                    Snapshot = $snapshot
+                }
+
+                [void]$SyncHash.Snapshots.Add($snapshotItem)
+            }
+
+            $SyncHash.ProcessedVMs++
+        }
+        catch {
+            $SyncHash.ProcessedVMs++
+        }
+    }
+
+    $SyncHash.IsComplete = $true
+    return $SyncHash.Snapshots
+}
+
+Export-ModuleMember -Function Get-VMSnapshotsAsync, Remove-VMSnapshotFromNode, Get-VMSnapshotsProgressive
