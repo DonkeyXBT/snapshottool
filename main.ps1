@@ -627,36 +627,73 @@ $comboBoxFilterServer.Add_SelectedIndexChanged({ Apply-ServerFilters })
 $checkBoxFavoritesServer.Add_CheckedChanged({ Apply-ServerFilters })
 $comboBoxAgeFilter.Add_SelectedIndexChanged({ Apply-SnapshotFilters })
 
-# Context menu for server grid (favorites)
-$contextMenuServer = New-Object System.Windows.Forms.ContextMenuStrip
-$menuItemAddFav = New-Object System.Windows.Forms.ToolStripMenuItem
-$menuItemAddFav.Text = "Add to Favorites"
+# Context menu for server grid (modern dark theme)
+$contextMenuServer = New-ModernContextMenu -MenuItems @(
+    @{ Text = "VM Actions"; Name = "menuHeader"; Tag = "header"; Enabled = $false }
+    @{ Type = "Separator" }
+    @{ Text = "  Add to Favorites"; Name = "menuAddFav" }
+    @{ Text = "  Remove from Favorites"; Name = "menuRemoveFav"; Tag = "danger" }
+)
+
+# Get references to the menu items by name
+$menuItemAddFav = $contextMenuServer.Items['menuAddFav']
+$menuItemRemoveFav = $contextMenuServer.Items['menuRemoveFav']
+
+# Dynamically show/hide items and update header when menu opens
+$contextMenuServer.Add_Opening({
+    param($sender, $e)
+    if ($dataGridServer.SelectedRows.Count -eq 0) {
+        $e.Cancel = $true
+        return
+    }
+
+    $row = $dataGridServer.SelectedRows[0]
+    $node = $row.Cells["Node"].Value
+    $vmName = $row.Cells["VM Name"].Value
+    $isFav = Test-IsFavorite -Node $node -VMName $vmName
+
+    # Update header to show VM name
+    $headerItem = $sender.Items['menuHeader']
+    if ($headerItem) { $headerItem.Text = $vmName }
+
+    # Show relevant option based on favorite state
+    $menuItemAddFav.Visible = -not $isFav
+    $menuItemRemoveFav.Visible = $isFav
+})
+
 $menuItemAddFav.Add_Click({
     if ($dataGridServer.SelectedRows.Count -gt 0) {
         $row = $dataGridServer.SelectedRows[0]
         $node = $row.Cells["Node"].Value
         $vmName = $row.Cells["VM Name"].Value
         if (Add-Favorite -Node $node -VMName $vmName) {
-            [System.Windows.Forms.MessageBox]::Show("Added $vmName to favorites", "Success", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+            Update-Status -StatusLabel $labelStatus -Message "Added $vmName to favorites" -Color "Green"
             Apply-ServerFilters
         }
     }
 })
-$contextMenuServer.Items.Add($menuItemAddFav)
 
-$menuItemRemoveFav = New-Object System.Windows.Forms.ToolStripMenuItem
-$menuItemRemoveFav.Text = "Remove from Favorites"
 $menuItemRemoveFav.Add_Click({
     if ($dataGridServer.SelectedRows.Count -gt 0) {
         $row = $dataGridServer.SelectedRows[0]
         $node = $row.Cells["Node"].Value
         $vmName = $row.Cells["VM Name"].Value
         Remove-Favorite -Node $node -VMName $vmName
-        [System.Windows.Forms.MessageBox]::Show("Removed $vmName from favorites", "Success", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+        Update-Status -StatusLabel $labelStatus -Message "Removed $vmName from favorites" -Color "Green"
         Apply-ServerFilters
     }
 })
-$contextMenuServer.Items.Add($menuItemRemoveFav)
+
+# Right-click should select the row under the cursor before showing menu
+$dataGridServer.Add_CellMouseDown({
+    param($sender, $e)
+    if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Right -and $e.RowIndex -ge 0) {
+        $sender.ClearSelection()
+        $sender.Rows[$e.RowIndex].Selected = $true
+        $sender.CurrentCell = $sender.Rows[$e.RowIndex].Cells[0]
+    }
+})
+
 $dataGridServer.ContextMenuStrip = $contextMenuServer
 
 # Export buttons
