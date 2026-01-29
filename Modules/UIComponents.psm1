@@ -4,6 +4,166 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# Custom Dark Theme ToolStrip Renderer (C# interop)
+# ═══════════════════════════════════════════════════════════════════════════════
+Add-Type -ReferencedAssemblies @('System.Windows.Forms', 'System.Drawing') -TypeDefinition @'
+using System;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Windows.Forms;
+
+public class DarkToolStripRenderer : ToolStripProfessionalRenderer
+{
+    // Color palette matching the app theme
+    private static readonly Color BgColor = Color.FromArgb(30, 32, 42);
+    private static readonly Color BorderColor = Color.FromArgb(50, 52, 66);
+    private static readonly Color HoverBg = Color.FromArgb(42, 44, 58);
+    private static readonly Color ActiveBg = Color.FromArgb(99, 102, 241);
+    private static readonly Color TextColor = Color.FromArgb(237, 237, 245);
+    private static readonly Color TextSecondary = Color.FromArgb(148, 163, 184);
+    private static readonly Color TextDim = Color.FromArgb(100, 116, 139);
+    private static readonly Color SeparatorColor = Color.FromArgb(50, 52, 66);
+    private static readonly Color AccentIndigo = Color.FromArgb(99, 102, 241);
+    private static readonly Color DangerColor = Color.FromArgb(248, 113, 113);
+    private static readonly Color ImageMarginBg = Color.FromArgb(26, 27, 36);
+
+    protected override void OnRenderToolStripBackground(ToolStripRenderEventArgs e)
+    {
+        using (var brush = new SolidBrush(BgColor))
+        {
+            e.Graphics.FillRectangle(brush, e.AffectedBounds);
+        }
+    }
+
+    protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e)
+    {
+        using (var pen = new Pen(BorderColor, 1))
+        {
+            var rect = new Rectangle(0, 0, e.AffectedBounds.Width - 1, e.AffectedBounds.Height - 1);
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            // Rounded corners
+            using (var path = RoundedRect(rect, 6))
+            {
+                e.Graphics.DrawPath(pen, path);
+            }
+        }
+    }
+
+    protected override void OnRenderImageMargin(ToolStripRenderEventArgs e)
+    {
+        // Draw a subtle left margin area for icons
+        var rect = new Rectangle(e.AffectedBounds.X, e.AffectedBounds.Y + 2,
+                                  e.AffectedBounds.Width, e.AffectedBounds.Height - 4);
+        using (var brush = new SolidBrush(ImageMarginBg))
+        {
+            e.Graphics.FillRectangle(brush, rect);
+        }
+    }
+
+    protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
+    {
+        var item = e.Item;
+        var g = e.Graphics;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+
+        var rect = new Rectangle(3, 1, item.Width - 6, item.Height - 2);
+
+        if (item.Selected && item.Enabled)
+        {
+            using (var brush = new SolidBrush(HoverBg))
+            using (var path = RoundedRect(rect, 4))
+            {
+                g.FillPath(brush, path);
+            }
+            // Left accent bar on hover
+            using (var accentBrush = new SolidBrush(AccentIndigo))
+            {
+                g.FillRectangle(accentBrush, 4, rect.Y + 4, 2, rect.Height - 8);
+            }
+        }
+        else if (item.Pressed && item.Enabled)
+        {
+            using (var brush = new SolidBrush(ActiveBg))
+            using (var path = RoundedRect(rect, 4))
+            {
+                g.FillPath(brush, path);
+            }
+        }
+    }
+
+    protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
+    {
+        if (e.Item.Enabled)
+        {
+            // Check if this is a "danger" tagged item
+            if (e.Item.Tag != null && e.Item.Tag.ToString() == "danger")
+            {
+                e.TextColor = DangerColor;
+            }
+            else
+            {
+                e.TextColor = TextColor;
+            }
+        }
+        else
+        {
+            e.TextColor = TextDim;
+        }
+        e.TextFont = new Font("Segoe UI", 9.0f, FontStyle.Regular);
+        base.OnRenderItemText(e);
+    }
+
+    protected override void OnRenderSeparator(ToolStripSeparatorRenderEventArgs e)
+    {
+        var g = e.Graphics;
+        int y = e.Item.Height / 2;
+        using (var pen = new Pen(SeparatorColor))
+        {
+            g.DrawLine(pen, 8, y, e.Item.Width - 8, y);
+        }
+    }
+
+    protected override void OnRenderArrow(ToolStripArrowRenderEventArgs e)
+    {
+        e.ArrowColor = TextSecondary;
+        base.OnRenderArrow(e);
+    }
+
+    protected override void OnRenderItemCheck(ToolStripItemImageRenderEventArgs e)
+    {
+        var g = e.Graphics;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        var rect = new Rectangle(e.ImageRectangle.X + 2, e.ImageRectangle.Y + 2,
+                                  e.ImageRectangle.Width - 4, e.ImageRectangle.Height - 4);
+        using (var brush = new SolidBrush(AccentIndigo))
+        {
+            g.FillEllipse(brush, rect);
+        }
+        // Draw checkmark
+        using (var pen = new Pen(Color.White, 1.5f))
+        {
+            int cx = rect.X + rect.Width / 2;
+            int cy = rect.Y + rect.Height / 2;
+            g.DrawLine(pen, cx - 3, cy, cx - 1, cy + 2);
+            g.DrawLine(pen, cx - 1, cy + 2, cx + 3, cy - 2);
+        }
+    }
+
+    private static GraphicsPath RoundedRect(Rectangle bounds, int radius)
+    {
+        int diameter = radius * 2;
+        var path = new GraphicsPath();
+        path.AddArc(bounds.X, bounds.Y, diameter, diameter, 180, 90);
+        path.AddArc(bounds.Right - diameter, bounds.Y, diameter, diameter, 270, 90);
+        path.AddArc(bounds.Right - diameter, bounds.Bottom - diameter, diameter, diameter, 0, 90);
+        path.AddArc(bounds.X, bounds.Bottom - diameter, diameter, diameter, 90, 90);
+        path.CloseFigure();
+        return path;
+    }
+}
+'@
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # Modern Dark Theme - Color Palette
 # ═══════════════════════════════════════════════════════════════════════════════
 $script:ColorTitleBar       = [System.Drawing.Color]::FromArgb(15, 15, 22)       # Deepest dark - title bar
@@ -1205,6 +1365,63 @@ function New-SnapshotManagementPanel {
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# Modern Context Menu - Dark themed right-click menu
+# ═══════════════════════════════════════════════════════════════════════════════
+function New-ModernContextMenu {
+    param(
+        [array]$MenuItems
+    )
+
+    $contextMenu = New-Object System.Windows.Forms.ContextMenuStrip
+    $contextMenu.Renderer = New-Object DarkToolStripRenderer
+    $contextMenu.BackColor = $script:ColorSurface
+    $contextMenu.ForeColor = $script:ColorText
+    $contextMenu.ShowImageMargin = $true
+    $contextMenu.ShowCheckMargin = $false
+    $contextMenu.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+
+    # Drop shadow for depth
+    $contextMenu.DropShadowEnabled = $true
+
+    # Padding for a spacious modern feel
+    $contextMenu.Padding = New-Object System.Windows.Forms.Padding(2, 6, 2, 6)
+
+    foreach ($menuDef in $MenuItems) {
+        if ($menuDef.Type -eq 'Separator') {
+            $separator = New-Object System.Windows.Forms.ToolStripSeparator
+            $separator.BackColor = $script:ColorSurface
+            $separator.ForeColor = $script:ColorBorder
+            [void]$contextMenu.Items.Add($separator)
+        }
+        else {
+            $menuItem = New-Object System.Windows.Forms.ToolStripMenuItem
+            $menuItem.Text = $menuDef.Text
+            $menuItem.Name = $menuDef.Name
+            $menuItem.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+            $menuItem.ForeColor = $script:ColorText
+            $menuItem.BackColor = $script:ColorSurface
+            $menuItem.Padding = New-Object System.Windows.Forms.Padding(8, 4, 16, 4)
+
+            if ($menuDef.Tag) {
+                $menuItem.Tag = $menuDef.Tag
+            }
+
+            if ($menuDef.ShortcutText) {
+                $menuItem.ShortcutKeyDisplayString = $menuDef.ShortcutText
+            }
+
+            if ($menuDef.Enabled -eq $false) {
+                $menuItem.Enabled = $false
+            }
+
+            [void]$contextMenu.Items.Add($menuItem)
+        }
+    }
+
+    return $contextMenu
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # Utility: Find Control By Name (recursive)
 # ═══════════════════════════════════════════════════════════════════════════════
 function Find-ControlByName {
@@ -1227,4 +1444,4 @@ function Find-ControlByName {
     return $null
 }
 
-Export-ModuleMember -Function New-MainForm, New-CustomTitleBar, New-ConnectionPanel, New-MenuPanel, New-ServerManagementPanel, New-SnapshotManagementPanel, Find-ControlByName, Update-DataGridScrollThumb, Add-ModernScrollbar, Add-ModernListBoxScrollbar
+Export-ModuleMember -Function New-MainForm, New-CustomTitleBar, New-ConnectionPanel, New-MenuPanel, New-ServerManagementPanel, New-SnapshotManagementPanel, Find-ControlByName, Update-DataGridScrollThumb, Add-ModernScrollbar, Add-ModernListBoxScrollbar, New-ModernContextMenu
