@@ -51,6 +51,45 @@ $script:ScrollbarThumbColor = [System.Drawing.Color]::FromArgb(70, 72, 90)
 $script:ScrollbarThumbHover = [System.Drawing.Color]::FromArgb(99, 102, 241)
 $script:ScrollbarWidth = 8
 
+# Shared helper: recalculate and reposition a scrollbar thumb for a DataGridView
+function Update-DataGridScrollThumb {
+    param(
+        [System.Windows.Forms.DataGridView]$Grid,
+        [System.Windows.Forms.Panel]$Thumb,
+        [System.Windows.Forms.Panel]$Track
+    )
+
+    if ($null -eq $Grid -or $null -eq $Thumb -or $null -eq $Track) { return }
+
+    if ($Grid.RowCount -eq 0) {
+        $Thumb.Visible = $false
+        return
+    }
+
+    $visibleRows = [Math]::Max(1, $Grid.DisplayedRowCount($true))
+    $totalRows = $Grid.RowCount
+
+    if ($totalRows -le $visibleRows) {
+        $Thumb.Visible = $false
+        return
+    }
+
+    $Thumb.Visible = $true
+
+    # Calculate thumb height proportional to visible area
+    $thumbHeight = [Math]::Max(30, [Math]::Floor(($visibleRows / $totalRows) * $Track.Height))
+    $Thumb.Height = $thumbHeight
+
+    # Calculate thumb position from current scroll position
+    $scrollableRows = $totalRows - $visibleRows
+    $currentRow = $Grid.FirstDisplayedScrollingRowIndex
+    $scrollRatio = if ($scrollableRows -gt 0) { $currentRow / $scrollableRows } else { 0 }
+    $maxThumbY = $Track.Height - $thumbHeight
+    $thumbY = [Math]::Floor($scrollRatio * $maxThumbY)
+
+    $Thumb.Location = New-Object System.Drawing.Point(1, $thumbY)
+}
+
 function Add-ModernScrollbar {
     param(
         [System.Windows.Forms.DataGridView]$DataGrid,
@@ -73,11 +112,10 @@ function Add-ModernScrollbar {
     $scrollThumb.Width = $script:ScrollbarWidth - 2
     $scrollThumb.BackColor = $script:ScrollbarThumbColor
     $scrollThumb.Location = New-Object System.Drawing.Point(1, 0)
-    $scrollThumb.Height = 50  # Initial height, will be calculated
+    $scrollThumb.Height = 50
     $scrollThumb.Name = 'modernScrollThumb'
     $scrollThumb.Cursor = [System.Windows.Forms.Cursors]::Hand
 
-    # Round corners effect using region (approximate with smaller height adjustment)
     $scrollTrack.Controls.Add($scrollThumb)
 
     # Store references for event handlers
@@ -92,12 +130,12 @@ function Add-ModernScrollbar {
     # Thumb hover effect
     $scrollThumb.Add_MouseEnter({
         param($sender, $e)
-        $sender.BackColor = $script:ScrollbarThumbHover
+        $sender.BackColor = [System.Drawing.Color]::FromArgb(99, 102, 241)
     })
     $scrollThumb.Add_MouseLeave({
         param($sender, $e)
         if (-not $sender.Tag.IsDragging) {
-            $sender.BackColor = $script:ScrollbarThumbColor
+            $sender.BackColor = [System.Drawing.Color]::FromArgb(70, 72, 90)
         }
     })
 
@@ -108,7 +146,7 @@ function Add-ModernScrollbar {
             $sender.Tag.IsDragging = $true
             $sender.Tag.DragStartY = $e.Y
             $sender.Tag.DragStartScrollY = $sender.Location.Y
-            $sender.BackColor = $script:ScrollbarThumbHover
+            $sender.BackColor = [System.Drawing.Color]::FromArgb(99, 102, 241)
         }
     })
 
@@ -118,17 +156,14 @@ function Add-ModernScrollbar {
             $track = $sender.Tag.Track
             $grid = $sender.Tag.DataGrid
 
-            # Calculate new thumb position
             $deltaY = $e.Y - $sender.Tag.DragStartY
             $newY = $sender.Tag.DragStartScrollY + $deltaY
 
-            # Clamp to track bounds
             $maxY = $track.Height - $sender.Height
             $newY = [Math]::Max(0, [Math]::Min($newY, $maxY))
 
             $sender.Location = New-Object System.Drawing.Point($sender.Location.X, $newY)
 
-            # Scroll the DataGrid
             if ($grid.RowCount -gt 0 -and $maxY -gt 0) {
                 $scrollRatio = $newY / $maxY
                 $targetRow = [Math]::Floor($scrollRatio * ($grid.RowCount - 1))
@@ -141,14 +176,16 @@ function Add-ModernScrollbar {
     $scrollThumb.Add_MouseUp({
         param($sender, $e)
         $sender.Tag.IsDragging = $false
-        $sender.BackColor = $script:ScrollbarThumbColor
+        $sender.BackColor = [System.Drawing.Color]::FromArgb(70, 72, 90)
     })
 
     # Track click to jump
     $scrollTrack.Add_MouseClick({
         param($sender, $e)
         $thumb = $sender.Controls['modernScrollThumb']
+        if ($null -eq $thumb) { return }
         $grid = $thumb.Tag.DataGrid
+        if ($null -eq $grid) { return }
 
         if ($grid.RowCount -gt 0) {
             $clickRatio = $e.Y / $sender.Height
@@ -158,47 +195,14 @@ function Add-ModernScrollbar {
         }
     })
 
-    # Update thumb position and size when grid scrolls or resizes
-    $updateScrollbar = {
-        param($grid, $thumb, $track)
-
-        if ($grid.RowCount -eq 0) {
-            $thumb.Visible = $false
-            return
-        }
-
-        $visibleRows = [Math]::Max(1, $grid.DisplayedRowCount($true))
-        $totalRows = $grid.RowCount
-
-        if ($totalRows -le $visibleRows) {
-            $thumb.Visible = $false
-            return
-        }
-
-        $thumb.Visible = $true
-
-        # Calculate thumb height
-        $thumbHeight = [Math]::Max(30, [Math]::Floor(($visibleRows / $totalRows) * $track.Height))
-        $thumb.Height = $thumbHeight
-
-        # Calculate thumb position
-        $scrollableRows = $totalRows - $visibleRows
-        $currentRow = $grid.FirstDisplayedScrollingRowIndex
-        $scrollRatio = if ($scrollableRows -gt 0) { $currentRow / $scrollableRows } else { 0 }
-        $maxThumbY = $track.Height - $thumbHeight
-        $thumbY = [Math]::Floor($scrollRatio * $maxThumbY)
-
-        $thumb.Location = New-Object System.Drawing.Point(1, $thumbY)
-    }.GetNewClosure()
-
-    # Hook into DataGrid scroll event
+    # Hook into DataGrid scroll event - inline the update logic
     $DataGrid.Add_Scroll({
         param($sender, $e)
         $track = $sender.Parent.Controls['modernScrollTrack']
         if ($track) {
             $thumb = $track.Controls['modernScrollThumb']
             if ($thumb -and $thumb.Tag) {
-                & $updateScrollbar $sender $thumb $track
+                Update-DataGridScrollThumb -Grid $sender -Thumb $thumb -Track $track
             }
         }
     })
@@ -210,29 +214,12 @@ function Add-ModernScrollbar {
         if ($track) {
             $thumb = $track.Controls['modernScrollThumb']
             if ($thumb -and $thumb.Tag) {
-                & $updateScrollbar $sender $thumb $track
+                Update-DataGridScrollThumb -Grid $sender -Thumb $thumb -Track $track
             }
         }
     })
 
-    # Initial update timer (for when data loads)
-    $initTimer = New-Object System.Windows.Forms.Timer
-    $initTimer.Interval = 100
-    $initTimer.Add_Tick({
-        param($sender, $e)
-        $sender.Stop()
-        $track = $DataGrid.Parent.Controls['modernScrollTrack']
-        if ($track) {
-            $thumb = $track.Controls['modernScrollThumb']
-            if ($thumb -and $thumb.Tag) {
-                & $updateScrollbar $DataGrid $thumb $track
-            }
-        }
-        $sender.Dispose()
-    }.GetNewClosure())
-    $initTimer.Start()
-
-    # Hide native scrollbar by adjusting grid width
+    # Hide native scrollbar
     $DataGrid.ScrollBars = [System.Windows.Forms.ScrollBars]::None
 
     $ParentPanel.Controls.Add($scrollTrack)
@@ -281,12 +268,12 @@ function Add-ModernListBoxScrollbar {
     # Thumb hover effect
     $scrollThumb.Add_MouseEnter({
         param($sender, $e)
-        $sender.BackColor = $script:ScrollbarThumbHover
+        $sender.BackColor = [System.Drawing.Color]::FromArgb(99, 102, 241)
     })
     $scrollThumb.Add_MouseLeave({
         param($sender, $e)
         if (-not $sender.Tag.IsDragging) {
-            $sender.BackColor = $script:ScrollbarThumbColor
+            $sender.BackColor = [System.Drawing.Color]::FromArgb(70, 72, 90)
         }
     })
 
@@ -297,7 +284,7 @@ function Add-ModernListBoxScrollbar {
             $sender.Tag.IsDragging = $true
             $sender.Tag.DragStartY = $e.Y
             $sender.Tag.DragStartScrollY = $sender.Location.Y
-            $sender.BackColor = $script:ScrollbarThumbHover
+            $sender.BackColor = [System.Drawing.Color]::FromArgb(99, 102, 241)
         }
     })
 
@@ -327,7 +314,7 @@ function Add-ModernListBoxScrollbar {
     $scrollThumb.Add_MouseUp({
         param($sender, $e)
         $sender.Tag.IsDragging = $false
-        $sender.BackColor = $script:ScrollbarThumbColor
+        $sender.BackColor = [System.Drawing.Color]::FromArgb(70, 72, 90)
     })
 
     # Hide native scrollbar
@@ -1240,4 +1227,4 @@ function Find-ControlByName {
     return $null
 }
 
-Export-ModuleMember -Function New-MainForm, New-CustomTitleBar, New-ConnectionPanel, New-MenuPanel, New-ServerManagementPanel, New-SnapshotManagementPanel, Find-ControlByName, Add-ModernScrollbar, Add-ModernListBoxScrollbar
+Export-ModuleMember -Function New-MainForm, New-CustomTitleBar, New-ConnectionPanel, New-MenuPanel, New-ServerManagementPanel, New-SnapshotManagementPanel, Find-ControlByName, Update-DataGridScrollThumb, Add-ModernScrollbar, Add-ModernListBoxScrollbar
