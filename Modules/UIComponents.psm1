@@ -1,4 +1,4 @@
-# UIComponents.psm1 - Modern Dark Theme UI Components
+# UIComponents.psm1 - HyperV Manager Dark Theme UI Components
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -355,26 +355,52 @@ function Add-ModernScrollbar {
         }
     })
 
-    # Hook into DataGrid scroll event - inline the update logic
+    # Hook into DataGrid scroll event - logic inlined to avoid scope issues in event handlers
     $DataGrid.Add_Scroll({
         param($sender, $e)
         $track = $sender.Parent.Controls['modernScrollTrack']
         if ($track) {
             $thumb = $track.Controls['modernScrollThumb']
             if ($thumb -and $thumb.Tag) {
-                Update-DataGridScrollThumb -Grid $sender -Thumb $thumb -Track $track
+                if ($null -eq $sender -or $null -eq $thumb -or $null -eq $track) { return }
+                if ($sender.RowCount -eq 0) { $thumb.Visible = $false; return }
+                $visibleRows = [Math]::Max(1, $sender.DisplayedRowCount($true))
+                $totalRows = $sender.RowCount
+                if ($totalRows -le $visibleRows) { $thumb.Visible = $false; return }
+                $thumb.Visible = $true
+                $thumbHeight = [Math]::Max(30, [Math]::Floor(($visibleRows / $totalRows) * $track.Height))
+                $thumb.Height = $thumbHeight
+                $scrollableRows = $totalRows - $visibleRows
+                $currentRow = $sender.FirstDisplayedScrollingRowIndex
+                $scrollRatio = if ($scrollableRows -gt 0) { $currentRow / $scrollableRows } else { 0 }
+                $maxThumbY = $track.Height - $thumbHeight
+                $thumbY = [Math]::Floor($scrollRatio * $maxThumbY)
+                $thumb.Location = New-Object System.Drawing.Point(1, $thumbY)
             }
         }
     })
 
-    # Hook into DataGrid DataSourceChanged to update scrollbar
+    # Hook into DataGrid DataSourceChanged to update scrollbar - logic inlined to avoid scope issues
     $DataGrid.Add_DataSourceChanged({
         param($sender, $e)
         $track = $sender.Parent.Controls['modernScrollTrack']
         if ($track) {
             $thumb = $track.Controls['modernScrollThumb']
             if ($thumb -and $thumb.Tag) {
-                Update-DataGridScrollThumb -Grid $sender -Thumb $thumb -Track $track
+                if ($null -eq $sender -or $null -eq $thumb -or $null -eq $track) { return }
+                if ($sender.RowCount -eq 0) { $thumb.Visible = $false; return }
+                $visibleRows = [Math]::Max(1, $sender.DisplayedRowCount($true))
+                $totalRows = $sender.RowCount
+                if ($totalRows -le $visibleRows) { $thumb.Visible = $false; return }
+                $thumb.Visible = $true
+                $thumbHeight = [Math]::Max(30, [Math]::Floor(($visibleRows / $totalRows) * $track.Height))
+                $thumb.Height = $thumbHeight
+                $scrollableRows = $totalRows - $visibleRows
+                $currentRow = $sender.FirstDisplayedScrollingRowIndex
+                $scrollRatio = if ($scrollableRows -gt 0) { $currentRow / $scrollableRows } else { 0 }
+                $maxThumbY = $track.Height - $thumbHeight
+                $thumbY = [Math]::Floor($scrollRatio * $maxThumbY)
+                $thumb.Location = New-Object System.Drawing.Point(1, $thumbY)
             }
         }
     })
@@ -491,7 +517,7 @@ function Add-ModernListBoxScrollbar {
 # ═══════════════════════════════════════════════════════════════════════════════
 function New-MainForm {
     $form = New-Object System.Windows.Forms.Form
-    $form.Text = 'Hyper-V Server Management Tool'
+    $form.Text = 'HyperV Manager'
     $form.Size = New-Object System.Drawing.Size(1500, 900)
     $form.StartPosition = 'CenterScreen'
     $form.MinimumSize = New-Object System.Drawing.Size(1400, 800)
@@ -526,7 +552,7 @@ function New-CustomTitleBar {
     $titleLabel = New-Object System.Windows.Forms.Label
     $titleLabel.Location = New-Object System.Drawing.Point(16, 0)
     $titleLabel.Size = New-Object System.Drawing.Size(500, 36)
-    $titleLabel.Text = 'Hyper-V Server Management'
+    $titleLabel.Text = 'HyperV Manager'
     $titleLabel.ForeColor = [System.Drawing.Color]::FromArgb(200, 200, 210)
     $titleLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9.5, [System.Drawing.FontStyle]::Regular)
     $titleLabel.BackColor = [System.Drawing.Color]::Transparent
@@ -795,7 +821,7 @@ function New-MenuPanel {
     $labelWelcome = New-Object System.Windows.Forms.Label
     $labelWelcome.Location = New-Object System.Drawing.Point(350, 100)
     $labelWelcome.Size = New-Object System.Drawing.Size(800, 50)
-    $labelWelcome.Text = 'Hyper-V Server Management'
+    $labelWelcome.Text = 'HyperV Manager'
     $labelWelcome.Font = New-Object System.Drawing.Font("Segoe UI Light", 28)
     $labelWelcome.TextAlign = 'MiddleCenter'
     $labelWelcome.ForeColor = $script:ColorText
@@ -805,7 +831,7 @@ function New-MenuPanel {
     $labelSubtitle = New-Object System.Windows.Forms.Label
     $labelSubtitle.Location = New-Object System.Drawing.Point(350, 158)
     $labelSubtitle.Size = New-Object System.Drawing.Size(800, 30)
-    $labelSubtitle.Text = 'Connect to a Hyper-V node to get started'
+    $labelSubtitle.Text = 'Connect to a node to get started'
     $labelSubtitle.Font = New-Object System.Drawing.Font("Segoe UI", 11)
     $labelSubtitle.TextAlign = 'MiddleCenter'
     $labelSubtitle.ForeColor = $script:ColorTextDim
@@ -961,7 +987,7 @@ function New-MenuPanel {
     $labelVersion = New-Object System.Windows.Forms.Label
     $labelVersion.Location = New-Object System.Drawing.Point(350, 520)
     $labelVersion.Size = New-Object System.Drawing.Size(800, 20)
-    $labelVersion.Text = 'v3.0 - Modern UI'
+    $labelVersion.Text = 'v3.1'
     $labelVersion.Font = New-Object System.Drawing.Font("Segoe UI", 8)
     $labelVersion.TextAlign = 'MiddleCenter'
     $labelVersion.ForeColor = $script:ColorTextDim
