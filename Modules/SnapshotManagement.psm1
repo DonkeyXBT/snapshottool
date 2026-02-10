@@ -1,5 +1,21 @@
 # SnapshotManagement.psm1 - Snapshot operations
 
+# Helper to compute human-readable age text from a TimeSpan
+function Get-AgeText {
+    param([TimeSpan]$Age)
+
+    if ($Age.TotalDays -ge 1) {
+        $days = [Math]::Floor($Age.TotalDays)
+        $hours = $Age.Hours
+        $dayLabel = if ($days -eq 1) { "day" } else { "days" }
+        return "{0} {1}, {2} hours" -f $days, $dayLabel, $hours
+    } elseif ($Age.TotalHours -ge 1) {
+        return "{0} hours, {1} minutes" -f [Math]::Floor($Age.TotalHours), $Age.Minutes
+    } else {
+        return "{0} minutes" -f [Math]::Floor($Age.TotalMinutes)
+    }
+}
+
 function Get-VMSnapshotsAsync {
     param([array]$VMData)
 
@@ -18,29 +34,20 @@ function Get-VMSnapshotsAsync {
 
             foreach ($snapshot in $snapshots) {
                 $age = (Get-Date) - $snapshot.CreationTime
-                $ageText = ""
-
-                if ($age.TotalDays -ge 1) {
-                    $ageText = "{0} days, {1} hours" -f [Math]::Floor($age.TotalDays), $age.Hours
-                } elseif ($age.TotalHours -ge 1) {
-                    $ageText = "{0} hours, {1} minutes" -f [Math]::Floor($age.TotalHours), $age.Minutes
-                } else {
-                    $ageText = "{0} minutes" -f [Math]::Floor($age.TotalMinutes)
-                }
 
                 $allSnapshots += [PSCustomObject]@{
                     Node = $node
                     VMName = $vm.Name
                     SnapshotName = $snapshot.Name
                     CreationTime = $snapshot.CreationTime
-                    Age = $ageText
+                    Age = Get-AgeText -Age $age
                     AgeDays = [Math]::Round($age.TotalDays, 2)
                     Snapshot = $snapshot
                 }
             }
         }
         catch {
-            Write-Warning "Error getting snapshots for $($vmData.Name): $($_.Exception.Message)"
+            Write-Warning "Error getting snapshots for $($vmData.VM.Name): $($_.Exception.Message)"
         }
     }
 
@@ -57,11 +64,15 @@ function Remove-VMSnapshotFromNode {
 
     try {
         if ($Node -eq 'localhost' -or $Node -eq $env:COMPUTERNAME) {
-            # Local deletion using snapshot object
             if ($SnapshotObject) {
+                # Try using the snapshot object directly
                 Remove-VMSnapshot -VMSnapshot $SnapshotObject -Confirm:$false -ErrorAction Stop
-                return @{ Success = $true; Error = $null }
+            } else {
+                # Fallback: look up the snapshot by name (handles cached/stale objects)
+                $snapshot = Get-VMSnapshot -VMName $VMName -Name $SnapshotName -ErrorAction Stop
+                Remove-VMSnapshot -VMSnapshot $snapshot -Confirm:$false -ErrorAction Stop
             }
+            return @{ Success = $true; Error = $null }
         } else {
             # Remote deletion using Invoke-Command
             Invoke-Command -ComputerName $Node -ScriptBlock {
@@ -97,29 +108,20 @@ function Get-VMSnapshotsProgressive {
             $SyncHash.CurrentVM = $vm.Name
 
             if ($node -eq 'localhost' -or $node -eq $env:COMPUTERNAME) {
-                $snapshots = Get-VMSnapshot -VM $vm -ErrorAction SilentlyContinue
+                $snapshots = Get-VMSnapshot -VM $vm -ErrorAction Stop
             } else {
-                $snapshots = Get-VMSnapshot -VMName $vm.Name -ComputerName $node -ErrorAction SilentlyContinue
+                $snapshots = Get-VMSnapshot -VMName $vm.Name -ComputerName $node -ErrorAction Stop
             }
 
             foreach ($snapshot in $snapshots) {
                 $age = (Get-Date) - $snapshot.CreationTime
-                $ageText = ""
-
-                if ($age.TotalDays -ge 1) {
-                    $ageText = "{0} days, {1} hours" -f [Math]::Floor($age.TotalDays), $age.Hours
-                } elseif ($age.TotalHours -ge 1) {
-                    $ageText = "{0} hours, {1} minutes" -f [Math]::Floor($age.TotalHours), $age.Minutes
-                } else {
-                    $ageText = "{0} minutes" -f [Math]::Floor($age.TotalMinutes)
-                }
 
                 $snapshotItem = [PSCustomObject]@{
                     Node = $node
                     VMName = $vm.Name
                     SnapshotName = $snapshot.Name
                     CreationTime = $snapshot.CreationTime
-                    Age = $ageText
+                    Age = Get-AgeText -Age $age
                     AgeDays = [Math]::Round($age.TotalDays, 2)
                     Snapshot = $snapshot
                 }
@@ -130,6 +132,7 @@ function Get-VMSnapshotsProgressive {
             $SyncHash.ProcessedVMs++
         }
         catch {
+            Write-Warning "Error getting snapshots for $($vmData.VM.Name): $($_.Exception.Message)"
             $SyncHash.ProcessedVMs++
         }
     }

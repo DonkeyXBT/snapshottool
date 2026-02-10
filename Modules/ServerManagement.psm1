@@ -137,7 +137,21 @@ function Get-ServerInformationAsync {
             }
         }
         catch {
-            Write-Warning "Error getting info for $($vm.Name): $($_.Exception.Message)"
+            Write-Warning "Error getting info for $($vmData.VM.Name): $($_.Exception.Message)"
+            # Add partial entry so the VM still shows up with available data
+            $serverInfo += [PSCustomObject]@{
+                Node = $vmData.Node
+                VMName = $vmData.VM.Name
+                State = $vmData.VM.State
+                GuestOS = "N/A"
+                IPAddresses = "N/A"
+                MemoryTotalGB = 0
+                MemoryUsedGB = 0
+                MemoryAvailableGB = 0
+                ProcessorCount = 0
+                DiskSizeGB = "N/A"
+                DiskUsedGB = "N/A"
+            }
         }
     }
 
@@ -223,7 +237,7 @@ function Get-ServerInformationProgressive {
             $memoryDemandGB = if ($vm.MemoryDemand) { [Math]::Round($vm.MemoryDemand / 1GB, 2) } else { 0 }
             $memoryAvailableGB = [Math]::Round(($vm.MemoryAssigned - $vm.MemoryDemand) / 1GB, 2)
 
-            # Get guest OS information
+            # Get guest OS information via KVP Exchange (requires integration services)
             $guestOS = "N/A"
             try {
                 if ($node -eq 'localhost' -or $node -eq $env:COMPUTERNAME) {
@@ -242,6 +256,28 @@ function Get-ServerInformationProgressive {
                             }
                         }
                     }
+                } else {
+                    $remoteOS = Invoke-Command -ComputerName $node -ScriptBlock {
+                        param($VMName)
+                        $osName = "N/A"
+                        $vmWmi = Get-CimInstance -Namespace "root\virtualization\v2" -ClassName "Msvm_ComputerSystem" -Filter "ElementName='$VMName'" -ErrorAction SilentlyContinue
+                        if ($vmWmi) {
+                            $kvp = Get-CimAssociatedInstance -InputObject $vmWmi -ResultClassName "Msvm_KvpExchangeComponent" -ErrorAction SilentlyContinue
+                            if ($kvp -and $kvp.GuestIntrinsicExchangeItems) {
+                                foreach ($item in $kvp.GuestIntrinsicExchangeItems) {
+                                    $xml = [xml]$item
+                                    $propName = ($xml.INSTANCE.PROPERTY | Where-Object { $_.NAME -eq 'Name' }).VALUE
+                                    $propData = ($xml.INSTANCE.PROPERTY | Where-Object { $_.NAME -eq 'Data' }).VALUE
+                                    if ($propName -eq 'OSName') {
+                                        $osName = $propData
+                                        break
+                                    }
+                                }
+                            }
+                        }
+                        return $osName
+                    } -ArgumentList $vm.Name -ErrorAction SilentlyContinue
+                    if ($remoteOS) { $guestOS = $remoteOS }
                 }
             } catch { }
 
@@ -259,6 +295,26 @@ function Get-ServerInformationProgressive {
                         }
                     }
                 }
+            } else {
+                try {
+                    $vhds = Get-VMHardDiskDrive -VMName $vm.Name -ComputerName $node -ErrorAction SilentlyContinue
+                    foreach ($vhd in $vhds) {
+                        if ($vhd.Path) {
+                            $vhdInfo = Invoke-Command -ComputerName $node -ScriptBlock {
+                                param($VhdPath)
+                                if (Test-Path $VhdPath) {
+                                    Get-VHD -Path $VhdPath -ErrorAction SilentlyContinue
+                                }
+                            } -ArgumentList $vhd.Path -ErrorAction SilentlyContinue
+
+                            if ($vhdInfo) {
+                                $diskSizeGB += [Math]::Round($vhdInfo.Size / 1GB, 2)
+                                $diskUsedGB += [Math]::Round($vhdInfo.FileSize / 1GB, 2)
+                            }
+                        }
+                    }
+                }
+                catch { }
             }
 
             $serverInfoItem = [PSCustomObject]@{
@@ -281,6 +337,7 @@ function Get-ServerInformationProgressive {
             $SyncHash.CurrentVM = $vm.Name
         }
         catch {
+            Write-Warning "Error getting info for $($vm.Name): $($_.Exception.Message)"
             $SyncHash.ProcessedVMs++
         }
     }

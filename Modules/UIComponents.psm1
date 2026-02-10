@@ -517,7 +517,7 @@ function Add-ModernListBoxScrollbar {
 # ═══════════════════════════════════════════════════════════════════════════════
 function New-MainForm {
     $form = New-Object System.Windows.Forms.Form
-    $form.Text = 'HyperV Manager'
+    $form.Text = 'HyperV Toolkit'
     $form.Size = New-Object System.Drawing.Size(1500, 900)
     $form.StartPosition = 'CenterScreen'
     $form.MinimumSize = New-Object System.Drawing.Size(1400, 800)
@@ -540,6 +540,7 @@ function New-CustomTitleBar {
     $titleBar.Size = New-Object System.Drawing.Size(1500, 36)
     $titleBar.BackColor = $script:ColorTitleBar
     $titleBar.Name = 'titleBar'
+    $titleBar.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
 
     # App icon indicator (small accent bar)
     $iconBar = New-Object System.Windows.Forms.Panel
@@ -552,7 +553,7 @@ function New-CustomTitleBar {
     $titleLabel = New-Object System.Windows.Forms.Label
     $titleLabel.Location = New-Object System.Drawing.Point(16, 0)
     $titleLabel.Size = New-Object System.Drawing.Size(500, 36)
-    $titleLabel.Text = 'HyperV Manager'
+    $titleLabel.Text = 'HyperV Toolkit'
     $titleLabel.ForeColor = [System.Drawing.Color]::FromArgb(200, 200, 210)
     $titleLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9.5, [System.Drawing.FontStyle]::Regular)
     $titleLabel.BackColor = [System.Drawing.Color]::Transparent
@@ -568,6 +569,7 @@ function New-CustomTitleBar {
     $btnMinimize = New-Object System.Windows.Forms.Button
     $btnMinimize.Location = New-Object System.Drawing.Point((1500 - ($btnWidth * 3)), 0)
     $btnMinimize.Size = New-Object System.Drawing.Size($btnWidth, $btnHeight)
+    $btnMinimize.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Right
     $btnMinimize.FlatStyle = 'Flat'
     $btnMinimize.FlatAppearance.BorderSize = 0
     $btnMinimize.FlatAppearance.MouseOverBackColor = $script:ColorSurfaceHover
@@ -594,6 +596,7 @@ function New-CustomTitleBar {
     $btnMaximize = New-Object System.Windows.Forms.Button
     $btnMaximize.Location = New-Object System.Drawing.Point((1500 - ($btnWidth * 2)), 0)
     $btnMaximize.Size = New-Object System.Drawing.Size($btnWidth, $btnHeight)
+    $btnMaximize.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Right
     $btnMaximize.FlatStyle = 'Flat'
     $btnMaximize.FlatAppearance.BorderSize = 0
     $btnMaximize.FlatAppearance.MouseOverBackColor = $script:ColorSurfaceHover
@@ -628,6 +631,7 @@ function New-CustomTitleBar {
     $btnClose = New-Object System.Windows.Forms.Button
     $btnClose.Location = New-Object System.Drawing.Point((1500 - $btnWidth), 0)
     $btnClose.Size = New-Object System.Drawing.Size($btnWidth, $btnHeight)
+    $btnClose.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Right
     $btnClose.FlatStyle = 'Flat'
     $btnClose.FlatAppearance.BorderSize = 0
     $btnClose.FlatAppearance.MouseOverBackColor = $script:ColorDangerHover
@@ -671,6 +675,7 @@ function New-CustomTitleBar {
     $accentLine.Location = New-Object System.Drawing.Point(0, 35)
     $accentLine.Size = New-Object System.Drawing.Size(1500, 1)
     $accentLine.BackColor = $script:ColorBorder
+    $accentLine.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
     $titleBar.Controls.Add($accentLine)
 
     # --- Make title bar draggable (both panel and label) ---
@@ -722,12 +727,14 @@ function New-ConnectionPanel {
     $panel.Size = New-Object System.Drawing.Size(1500, 70)
     $panel.BackColor = $script:ColorSurface
     $panel.BorderStyle = 'None'
+    $panel.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
 
     # Bottom border
     $borderLine = New-Object System.Windows.Forms.Panel
     $borderLine.Location = New-Object System.Drawing.Point(0, 69)
     $borderLine.Size = New-Object System.Drawing.Size(1500, 1)
     $borderLine.BackColor = $script:ColorBorder
+    $borderLine.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
     $panel.Controls.Add($borderLine)
 
     # Node label
@@ -773,6 +780,7 @@ function New-ConnectionPanel {
     $buttonConnect.FlatAppearance.MouseDownBackColor = $script:ColorPrimaryDark
     $buttonConnect.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 9.5)
     $buttonConnect.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $buttonConnect.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Right
     $buttonConnect.Name = 'buttonConnect'
     $panel.Controls.Add($buttonConnect)
 
@@ -789,6 +797,7 @@ function New-ConnectionPanel {
     $buttonBackToMenu.Font = New-Object System.Drawing.Font("Segoe UI", 9.5)
     $buttonBackToMenu.Cursor = [System.Windows.Forms.Cursors]::Hand
     $buttonBackToMenu.Enabled = $false
+    $buttonBackToMenu.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Right
     $buttonBackToMenu.Name = 'buttonBackToMenu'
     $panel.Controls.Add($buttonBackToMenu)
 
@@ -799,6 +808,7 @@ function New-ConnectionPanel {
     $labelStatus.Text = 'Enter Hyper-V node(s) and click Connect'
     $labelStatus.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
     $labelStatus.ForeColor = $script:ColorTextDim
+    $labelStatus.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
     $labelStatus.Name = 'labelStatus'
     $panel.Controls.Add($labelStatus)
 
@@ -815,13 +825,14 @@ function New-MenuPanel {
     $panel.Size = New-Object System.Drawing.Size(1500, 794)
     $panel.BackColor = $script:ColorBackground
     $panel.Visible = $true
+    $panel.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right -bor [System.Windows.Forms.AnchorStyles]::Bottom
     $panel.Name = 'panelMenu'
 
     # Welcome title
     $labelWelcome = New-Object System.Windows.Forms.Label
     $labelWelcome.Location = New-Object System.Drawing.Point(350, 100)
     $labelWelcome.Size = New-Object System.Drawing.Size(800, 50)
-    $labelWelcome.Text = 'HyperV Manager'
+    $labelWelcome.Text = 'HyperV Toolkit'
     $labelWelcome.Font = New-Object System.Drawing.Font("Segoe UI Light", 28)
     $labelWelcome.TextAlign = 'MiddleCenter'
     $labelWelcome.ForeColor = $script:ColorText
@@ -987,7 +998,7 @@ function New-MenuPanel {
     $labelVersion = New-Object System.Windows.Forms.Label
     $labelVersion.Location = New-Object System.Drawing.Point(350, 520)
     $labelVersion.Size = New-Object System.Drawing.Size(800, 20)
-    $labelVersion.Text = 'v3.1'
+    $labelVersion.Text = 'v4.0'
     $labelVersion.Font = New-Object System.Drawing.Font("Segoe UI", 8)
     $labelVersion.TextAlign = 'MiddleCenter'
     $labelVersion.ForeColor = $script:ColorTextDim
@@ -1005,6 +1016,7 @@ function New-ServerManagementPanel {
     $panel.Size = New-Object System.Drawing.Size(1500, 794)
     $panel.BackColor = $script:ColorBackground
     $panel.Visible = $false
+    $panel.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right -bor [System.Windows.Forms.AnchorStyles]::Bottom
     $panel.Name = 'panelServer'
 
     # ── Toolbar area ──
@@ -1012,6 +1024,7 @@ function New-ServerManagementPanel {
     $toolbar.Location = New-Object System.Drawing.Point(0, 0)
     $toolbar.Size = New-Object System.Drawing.Size(1500, 56)
     $toolbar.BackColor = $script:ColorSurface
+    $toolbar.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
     $panel.Controls.Add($toolbar)
 
     # Bottom border
@@ -1019,6 +1032,7 @@ function New-ServerManagementPanel {
     $toolbarBorder.Location = New-Object System.Drawing.Point(0, 55)
     $toolbarBorder.Size = New-Object System.Drawing.Size(1500, 1)
     $toolbarBorder.BackColor = $script:ColorBorder
+    $toolbarBorder.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
     $toolbar.Controls.Add($toolbarBorder)
 
     # Section title
@@ -1080,6 +1094,7 @@ function New-ServerManagementPanel {
     $buttonExport.FlatAppearance.MouseOverBackColor = $script:ColorSuccessHover
     $buttonExport.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 9)
     $buttonExport.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $buttonExport.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Right
     $buttonExport.Name = 'buttonExportServer'
     $toolbar.Controls.Add($buttonExport)
 
@@ -1095,6 +1110,7 @@ function New-ServerManagementPanel {
     $buttonRefreshServer.FlatAppearance.MouseOverBackColor = $script:ColorPrimaryHover
     $buttonRefreshServer.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 9)
     $buttonRefreshServer.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $buttonRefreshServer.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Right
     $buttonRefreshServer.Name = 'buttonRefreshServer'
     $toolbar.Controls.Add($buttonRefreshServer)
 
@@ -1130,6 +1146,7 @@ function New-ServerManagementPanel {
     $dataGridServer.RowTemplate.Height = 32
     $dataGridServer.AlternatingRowsDefaultCellStyle.BackColor = $script:ColorGridAlt
     $dataGridServer.AlternatingRowsDefaultCellStyle.ForeColor = $script:ColorText
+    $dataGridServer.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right -bor [System.Windows.Forms.AnchorStyles]::Bottom
     $dataGridServer.Name = 'dataGridServer'
     Enable-DoubleBuffering -Control $dataGridServer
     $panel.Controls.Add($dataGridServer)
@@ -1140,6 +1157,7 @@ function New-ServerManagementPanel {
     $labelSummaryServer.Size = New-Object System.Drawing.Size(1460, 24)
     $labelSummaryServer.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
     $labelSummaryServer.ForeColor = $script:ColorTextDim
+    $labelSummaryServer.Anchor = [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Right
     $labelSummaryServer.Name = 'labelSummaryServer'
     $panel.Controls.Add($labelSummaryServer)
 
@@ -1155,6 +1173,7 @@ function New-SnapshotManagementPanel {
     $panel.Size = New-Object System.Drawing.Size(1500, 794)
     $panel.BackColor = $script:ColorBackground
     $panel.Visible = $false
+    $panel.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right -bor [System.Windows.Forms.AnchorStyles]::Bottom
     $panel.Name = 'panelSnapshot'
 
     # ── Toolbar area ──
@@ -1162,12 +1181,14 @@ function New-SnapshotManagementPanel {
     $toolbar.Location = New-Object System.Drawing.Point(0, 0)
     $toolbar.Size = New-Object System.Drawing.Size(1500, 56)
     $toolbar.BackColor = $script:ColorSurface
+    $toolbar.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
     $panel.Controls.Add($toolbar)
 
     $toolbarBorder = New-Object System.Windows.Forms.Panel
     $toolbarBorder.Location = New-Object System.Drawing.Point(0, 55)
     $toolbarBorder.Size = New-Object System.Drawing.Size(1500, 1)
     $toolbarBorder.BackColor = $script:ColorBorder
+    $toolbarBorder.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
     $toolbar.Controls.Add($toolbarBorder)
 
     # Section title
@@ -1185,6 +1206,7 @@ function New-SnapshotManagementPanel {
     $sidebarPanel.Location = New-Object System.Drawing.Point(0, 56)
     $sidebarPanel.Size = New-Object System.Drawing.Size(350, 738)
     $sidebarPanel.BackColor = $script:ColorSurface
+    $sidebarPanel.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Bottom
 
     # Sidebar right border
     $sidebarBorder = New-Object System.Windows.Forms.Panel
@@ -1224,6 +1246,7 @@ function New-SnapshotManagementPanel {
     $listBoxVMs.BorderStyle = 'None'
     $listBoxVMs.Font = New-Object System.Drawing.Font("Segoe UI", 9)
     $listBoxVMs.ItemHeight = 26
+    $listBoxVMs.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Right
     $listBoxVMs.Name = 'listBoxVMs'
     $sidebarPanel.Controls.Add($listBoxVMs)
 
@@ -1268,6 +1291,7 @@ function New-SnapshotManagementPanel {
     $buttonExportSnapshot.FlatAppearance.MouseOverBackColor = $script:ColorSuccessHover
     $buttonExportSnapshot.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 9)
     $buttonExportSnapshot.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $buttonExportSnapshot.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Right
     $buttonExportSnapshot.Name = 'buttonExportSnapshot'
     $toolbar.Controls.Add($buttonExportSnapshot)
 
@@ -1283,6 +1307,7 @@ function New-SnapshotManagementPanel {
     $buttonRefreshSnapshot.FlatAppearance.MouseOverBackColor = $script:ColorPrimaryHover
     $buttonRefreshSnapshot.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 9)
     $buttonRefreshSnapshot.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $buttonRefreshSnapshot.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Right
     $buttonRefreshSnapshot.Name = 'buttonRefreshSnapshot'
     $toolbar.Controls.Add($buttonRefreshSnapshot)
 
@@ -1318,6 +1343,7 @@ function New-SnapshotManagementPanel {
     $dataGridSnapshots.RowTemplate.Height = 32
     $dataGridSnapshots.AlternatingRowsDefaultCellStyle.BackColor = $script:ColorGridAlt
     $dataGridSnapshots.AlternatingRowsDefaultCellStyle.ForeColor = $script:ColorText
+    $dataGridSnapshots.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right -bor [System.Windows.Forms.AnchorStyles]::Bottom
     $dataGridSnapshots.Name = 'dataGridSnapshots'
     Enable-DoubleBuffering -Control $dataGridSnapshots
     $panel.Controls.Add($dataGridSnapshots)
@@ -1327,6 +1353,7 @@ function New-SnapshotManagementPanel {
     $actionBar.Location = New-Object System.Drawing.Point(366, 680)
     $actionBar.Size = New-Object System.Drawing.Size(1114, 50)
     $actionBar.BackColor = $script:ColorBackground
+    $actionBar.Anchor = [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Right
     $panel.Controls.Add($actionBar)
 
     # Delete button (danger)
@@ -1384,6 +1411,7 @@ function New-SnapshotManagementPanel {
     $labelSummary.Text = ''
     $labelSummary.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
     $labelSummary.ForeColor = $script:ColorTextDim
+    $labelSummary.Anchor = [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Right
     $labelSummary.Name = 'labelSummary'
     $panel.Controls.Add($labelSummary)
 
@@ -1456,13 +1484,17 @@ function Find-ControlByName {
         [string]$Name
     )
 
+    if ($null -eq $Parent -or [string]::IsNullOrWhiteSpace($Name)) {
+        return $null
+    }
+
     foreach ($control in $Parent.Controls) {
         if ($control.Name -eq $Name) {
             return $control
         }
         if ($control.Controls.Count -gt 0) {
             $found = Find-ControlByName -Parent $control -Name $Name
-            if ($found) {
+            if ($null -ne $found) {
                 return $found
             }
         }

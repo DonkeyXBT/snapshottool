@@ -2,25 +2,63 @@
 
 # Configuration variables
 $script:LogFile = $null
-$script:TeamsWebhookUrl = 'https://asapnet.webhook.office.com/webhookb2/e2cb2abf-e3ad-44a2-9ac2-fc75a3e69157@60922053-03d2-40e3-837a-5ca3fca7102b/IncomingWebhook/cf8d6f80c793446793387c866095bb6d/0fae63a6-c28c-4510-983e-92bc30465c6e/V25JJgAkleuQh2-QQcU88NJWNxOj4QcaRikzUgQZrp_qc1'
+$script:TeamsWebhookUrl = $null
+$script:ConfigFile = $null
+$script:MaxLogSizeMB = 10
+
+function Initialize-Config {
+    param([string]$ScriptPath)
+
+    $configPath = if ($ScriptPath) { $ScriptPath } else { $PWD.Path }
+    $script:ConfigFile = Join-Path $configPath "config.json"
+
+    # Load webhook URL: environment variable takes priority, then config file
+    if ($env:HYPERV_TEAMS_WEBHOOK_URL) {
+        $script:TeamsWebhookUrl = $env:HYPERV_TEAMS_WEBHOOK_URL
+    }
+    elseif (Test-Path $script:ConfigFile) {
+        try {
+            $config = Get-Content $script:ConfigFile -Raw | ConvertFrom-Json
+            if ($config.TeamsWebhookUrl) {
+                $script:TeamsWebhookUrl = $config.TeamsWebhookUrl
+            }
+        }
+        catch {
+            Write-Warning "Failed to load config file: $($_.Exception.Message)"
+        }
+    }
+}
 
 function Initialize-LogFile {
     param([string]$ScriptPath)
 
     $logPath = if ($ScriptPath) { $ScriptPath } else { $PWD.Path }
-    $script:LogFile = Join-Path $logPath "HyperV-Manager.log"
+    $script:LogFile = Join-Path $logPath "HyperV-Toolkit.log"
 
     # Ensure parent directory exists and create log file
     try {
-        # Get the directory path
         $logDirectory = Split-Path -Path $script:LogFile -Parent
 
-        # Create directory if it doesn't exist
         if (-not (Test-Path $logDirectory)) {
             New-Item -Path $logDirectory -ItemType Directory -Force | Out-Null
         }
 
-        # Create log file if it doesn't exist
+        # Rotate log if it exceeds max size
+        if (Test-Path $script:LogFile) {
+            $logSize = (Get-Item $script:LogFile).Length / 1MB
+            if ($logSize -ge $script:MaxLogSizeMB) {
+                $archivePath = $script:LogFile -replace '\.log$', "_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+                Move-Item -Path $script:LogFile -Destination $archivePath -Force
+                # Keep only the 5 most recent archived logs
+                $logDir = Split-Path $script:LogFile -Parent
+                $logBaseName = [System.IO.Path]::GetFileNameWithoutExtension($script:LogFile)
+                Get-ChildItem -Path $logDir -Filter "${logBaseName}_*.log" |
+                    Sort-Object LastWriteTime -Descending |
+                    Select-Object -Skip 5 |
+                    Remove-Item -Force -ErrorAction SilentlyContinue
+            }
+        }
+
         if (-not (Test-Path $script:LogFile)) {
             New-Item -Path $script:LogFile -ItemType File -Force | Out-Null
         }
@@ -29,7 +67,7 @@ function Initialize-LogFile {
         Write-Warning "Failed to create log file: $($_.Exception.Message)"
     }
 
-    Write-Log "HyperV Manager started" "INFO"
+    Write-Log "HyperV Toolkit started" "INFO"
 }
 
 function Write-Log {
@@ -58,6 +96,11 @@ function Send-TeamsNotification {
         [string]$Message,
         [string]$Color = "00FF00"  # Green by default
     )
+
+    if (-not $script:TeamsWebhookUrl) {
+        Write-Log "Teams notification skipped (no webhook URL configured): $Title" "WARNING"
+        return
+    }
 
     try {
         $body = @{
@@ -163,19 +206,21 @@ function Add-Favorite {
         [string]$VMName
     )
 
+    # Check for existing favorite by Node+VMName (not object reference comparison)
+    if (Test-IsFavorite -Node $Node -VMName $VMName) {
+        return $false
+    }
+
     $favorite = @{
         Node = $Node
         VMName = $VMName
         AddedDate = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
     }
 
-    if ($script:Favorites -notcontains $favorite) {
-        $script:Favorites += $favorite
-        Save-Favorites
-        Write-Log "Added favorite: $VMName on $Node" "INFO"
-        return $true
-    }
-    return $false
+    $script:Favorites += $favorite
+    Save-Favorites
+    Write-Log "Added favorite: $VMName on $Node" "INFO"
+    return $true
 }
 
 function Remove-Favorite {
@@ -559,4 +604,4 @@ function Get-RecentNodes {
     return @()
 }
 
-Export-ModuleMember -Function Initialize-LogFile, Write-Log, Send-TeamsNotification, Update-Status, Export-ToCSV, Initialize-Favorites, Add-Favorite, Remove-Favorite, Get-Favorites, Test-IsFavorite, Initialize-CacheFiles, Save-ServerInfoCache, Load-ServerInfoCache, Save-SnapshotsCache, Load-SnapshotsCache, Get-CacheAge, Initialize-NodesHistory, Save-NodesHistory, Load-NodesHistory, Get-RecentNodes
+Export-ModuleMember -Function Initialize-LogFile, Write-Log, Send-TeamsNotification, Update-Status, Export-ToCSV, Initialize-Favorites, Add-Favorite, Remove-Favorite, Get-Favorites, Test-IsFavorite, Initialize-CacheFiles, Save-ServerInfoCache, Load-ServerInfoCache, Save-SnapshotsCache, Load-SnapshotsCache, Get-CacheAge, Initialize-NodesHistory, Save-NodesHistory, Load-NodesHistory, Get-RecentNodes, Initialize-Config

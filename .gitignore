@@ -1,0 +1,14 @@
+# Configuration (may contain webhook URLs)
+config.json
+
+# Runtime data files
+serverinfo.json
+snapshots.json
+favorites.json
+nodes.json
+
+# Log files
+*.log
+
+# PowerShell module cache
+*.psm1.bak

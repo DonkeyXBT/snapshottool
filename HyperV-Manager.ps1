@@ -3,7 +3,7 @@
 
 <#
 .SYNOPSIS
-    HyperV Manager - Hyper-V Server & Snapshot Management Tool
+    HyperV Toolkit - Hyper-V Server & Snapshot Management Tool
 .DESCRIPTION
     A comprehensive GUI tool for managing Hyper-V virtual machines and snapshots:
     - Server Management: View IP addresses, memory, storage, and CPU information
@@ -13,7 +13,7 @@
     - Favorites: Mark and filter favorite VMs
     - Notifications: Microsoft Teams webhook integration
 .NOTES
-    Version: 3.1
+    Version: 4.0
 #>
 
 # Get script path
@@ -25,8 +25,9 @@ Import-Module (Join-Path $scriptPath "Modules\ServerManagement.psm1") -Force
 Import-Module (Join-Path $scriptPath "Modules\SnapshotManagement.psm1") -Force
 Import-Module (Join-Path $scriptPath "Modules\UIComponents.psm1") -Force
 
-# Initialize logging and favorites
+# Initialize logging, config, and favorites
 Initialize-LogFile -ScriptPath $scriptPath
+Initialize-Config -ScriptPath $scriptPath
 Initialize-Favorites -ScriptPath $scriptPath
 
 # Global variables
@@ -575,8 +576,8 @@ function Refresh-SnapshotData {
     $script:snapshotTimer.Start()
 }
 
-# Placeholder text management for search boxes (dark theme colors)
-$script:PlaceholderColor = [System.Drawing.Color]::FromArgb(100, 116, 139)
+# Placeholder text management for search boxes (dark theme colors - improved visibility)
+$script:PlaceholderColor = [System.Drawing.Color]::FromArgb(130, 140, 160)
 $script:ActiveTextColor = [System.Drawing.Color]::FromArgb(237, 237, 245)
 
 $textBoxSearchServer.Add_GotFocus({
@@ -591,7 +592,17 @@ $textBoxSearchServer.Add_LostFocus({
         $textBoxSearchServer.ForeColor = $script:PlaceholderColor
     }
 })
-$textBoxSearchServer.Add_TextChanged({ Apply-ServerFilters })
+# Debounced search - waits 200ms after last keystroke before filtering
+$script:serverSearchTimer = New-Object System.Windows.Forms.Timer
+$script:serverSearchTimer.Interval = 200
+$script:serverSearchTimer.Add_Tick({
+    $script:serverSearchTimer.Stop()
+    Apply-ServerFilters
+})
+$textBoxSearchServer.Add_TextChanged({
+    $script:serverSearchTimer.Stop()
+    $script:serverSearchTimer.Start()
+})
 
 $textBoxSearchVM.Add_GotFocus({
     if ($textBoxSearchVM.Text -eq 'Search VMs...') {
@@ -605,7 +616,16 @@ $textBoxSearchVM.Add_LostFocus({
         $textBoxSearchVM.ForeColor = $script:PlaceholderColor
     }
 })
-$textBoxSearchVM.Add_TextChanged({ Apply-VMListFilters })
+$script:vmSearchTimer = New-Object System.Windows.Forms.Timer
+$script:vmSearchTimer.Interval = 200
+$script:vmSearchTimer.Add_Tick({
+    $script:vmSearchTimer.Stop()
+    Apply-VMListFilters
+})
+$textBoxSearchVM.Add_TextChanged({
+    $script:vmSearchTimer.Stop()
+    $script:vmSearchTimer.Start()
+})
 
 $textBoxSearchSnapshot.Add_GotFocus({
     if ($textBoxSearchSnapshot.Text -eq 'Search snapshots...') {
@@ -619,7 +639,16 @@ $textBoxSearchSnapshot.Add_LostFocus({
         $textBoxSearchSnapshot.ForeColor = $script:PlaceholderColor
     }
 })
-$textBoxSearchSnapshot.Add_TextChanged({ Apply-SnapshotFilters })
+$script:snapshotSearchTimer = New-Object System.Windows.Forms.Timer
+$script:snapshotSearchTimer.Interval = 200
+$script:snapshotSearchTimer.Add_Tick({
+    $script:snapshotSearchTimer.Stop()
+    Apply-SnapshotFilters
+})
+$textBoxSearchSnapshot.Add_TextChanged({
+    $script:snapshotSearchTimer.Stop()
+    $script:snapshotSearchTimer.Start()
+})
 
 # Filter change events
 $comboBoxFilterServer.Add_SelectedIndexChanged({ Apply-ServerFilters })
@@ -729,6 +758,19 @@ $buttonConnect.Add_Click({
     }
 
     $script:hyperVNodes = $nodeInput -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' }
+
+    # Validate node names (alphanumeric, hyphens, dots, underscores only)
+    $invalidNodes = $script:hyperVNodes | Where-Object { $_ -notmatch '^[a-zA-Z0-9._-]+$' }
+    if ($invalidNodes.Count -gt 0) {
+        [System.Windows.Forms.MessageBox]::Show(
+            "Invalid node name(s): $($invalidNodes -join ', ')`n`nNode names can only contain letters, numbers, dots, hyphens, and underscores.",
+            "Invalid Input",
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Warning
+        )
+        return
+    }
+
     Write-Log "Connecting to nodes: $($script:hyperVNodes -join ', ')" "INFO"
 
     # Save nodes to history
@@ -935,4 +977,4 @@ $buttonDeselectAll.Add_Click({ $dataGridSnapshots.ClearSelection() })
 # Show the form
 Write-Log "Displaying main form" "INFO"
 [void]$form.ShowDialog()
-Write-Log "HyperV Manager closed" "INFO"
+Write-Log "HyperV Toolkit closed" "INFO"
