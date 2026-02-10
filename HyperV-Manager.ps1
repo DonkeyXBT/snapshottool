@@ -3,18 +3,17 @@
 
 <#
 .SYNOPSIS
-    Hyper-V Server Management and Snapshot Tool
+    HyperV Manager - Hyper-V Server & Snapshot Management Tool
 .DESCRIPTION
-    A comprehensive GUI tool to manage Hyper-V servers and VMs including:
-    - Server Management: View IP addresses, memory, and storage information
-    - Snapshot Management: View and delete VM snapshots
-    - Search & Filtering: Quick find VMs and snapshots
+    A comprehensive GUI tool for managing Hyper-V virtual machines and snapshots:
+    - Server Management: View IP addresses, memory, storage, and CPU information
+    - Snapshot Management: View, filter, and delete VM snapshots across nodes
+    - Search & Filtering: Real-time search and state/age filtering
     - Export to CSV: Export data for reporting
-    - Favorites: Mark VMs as favorites
+    - Favorites: Mark and filter favorite VMs
+    - Notifications: Microsoft Teams webhook integration
 .NOTES
-    Author: Claude
-    Date: 2026-01-19
-    Version: 3.0 (Modern Dark Theme UI)
+    Version: 3.1
 #>
 
 # Get script path
@@ -936,4 +935,4 @@ $buttonDeselectAll.Add_Click({ $dataGridSnapshots.ClearSelection() })
 # Show the form
 Write-Log "Displaying main form" "INFO"
 [void]$form.ShowDialog()
-Write-Log "Hyper-V Server Management Tool closed" "INFO"
+Write-Log "HyperV Manager closed" "INFO"

@@ -8,7 +8,7 @@ function Initialize-LogFile {
     param([string]$ScriptPath)
 
     $logPath = if ($ScriptPath) { $ScriptPath } else { $PWD.Path }
-    $script:LogFile = Join-Path $logPath "HyperV-ManagementTool.log"
+    $script:LogFile = Join-Path $logPath "HyperV-Manager.log"
 
     # Ensure parent directory exists and create log file
     try {
@@ -29,7 +29,7 @@ function Initialize-LogFile {
         Write-Warning "Failed to create log file: $($_.Exception.Message)"
     }
 
-    Write-Log "Hyper-V Server Management Tool started" "INFO"
+    Write-Log "HyperV Manager started" "INFO"
 }
 
 function Write-Log {
