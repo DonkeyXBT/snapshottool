@@ -105,7 +105,7 @@ HyperV Toolkit is a PowerShell-based desktop application that gives you complete
 ### 1. Clone the Repository
 
 ```powershell
-git clone https://github.com/DonkeyXBT/snapshottool.git HyperV-Toolkit
+git clone https://github.com/DonkeyXBT/HyperV-Toolkit.git
 cd HyperV-Toolkit
 ```
 
