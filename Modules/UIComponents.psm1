@@ -355,26 +355,52 @@ function Add-ModernScrollbar {
         }
     })
 
-    # Hook into DataGrid scroll event - inline the update logic
+    # Hook into DataGrid scroll event - logic inlined to avoid scope issues in event handlers
     $DataGrid.Add_Scroll({
         param($sender, $e)
         $track = $sender.Parent.Controls['modernScrollTrack']
         if ($track) {
             $thumb = $track.Controls['modernScrollThumb']
             if ($thumb -and $thumb.Tag) {
-                Update-DataGridScrollThumb -Grid $sender -Thumb $thumb -Track $track
+                if ($null -eq $sender -or $null -eq $thumb -or $null -eq $track) { return }
+                if ($sender.RowCount -eq 0) { $thumb.Visible = $false; return }
+                $visibleRows = [Math]::Max(1, $sender.DisplayedRowCount($true))
+                $totalRows = $sender.RowCount
+                if ($totalRows -le $visibleRows) { $thumb.Visible = $false; return }
+                $thumb.Visible = $true
+                $thumbHeight = [Math]::Max(30, [Math]::Floor(($visibleRows / $totalRows) * $track.Height))
+                $thumb.Height = $thumbHeight
+                $scrollableRows = $totalRows - $visibleRows
+                $currentRow = $sender.FirstDisplayedScrollingRowIndex
+                $scrollRatio = if ($scrollableRows -gt 0) { $currentRow / $scrollableRows } else { 0 }
+                $maxThumbY = $track.Height - $thumbHeight
+                $thumbY = [Math]::Floor($scrollRatio * $maxThumbY)
+                $thumb.Location = New-Object System.Drawing.Point(1, $thumbY)
             }
         }
     })
 
-    # Hook into DataGrid DataSourceChanged to update scrollbar
+    # Hook into DataGrid DataSourceChanged to update scrollbar - logic inlined to avoid scope issues
     $DataGrid.Add_DataSourceChanged({
         param($sender, $e)
         $track = $sender.Parent.Controls['modernScrollTrack']
         if ($track) {
             $thumb = $track.Controls['modernScrollThumb']
             if ($thumb -and $thumb.Tag) {
-                Update-DataGridScrollThumb -Grid $sender -Thumb $thumb -Track $track
+                if ($null -eq $sender -or $null -eq $thumb -or $null -eq $track) { return }
+                if ($sender.RowCount -eq 0) { $thumb.Visible = $false; return }
+                $visibleRows = [Math]::Max(1, $sender.DisplayedRowCount($true))
+                $totalRows = $sender.RowCount
+                if ($totalRows -le $visibleRows) { $thumb.Visible = $false; return }
+                $thumb.Visible = $true
+                $thumbHeight = [Math]::Max(30, [Math]::Floor(($visibleRows / $totalRows) * $track.Height))
+                $thumb.Height = $thumbHeight
+                $scrollableRows = $totalRows - $visibleRows
+                $currentRow = $sender.FirstDisplayedScrollingRowIndex
+                $scrollRatio = if ($scrollableRows -gt 0) { $currentRow / $scrollableRows } else { 0 }
+                $maxThumbY = $track.Height - $thumbHeight
+                $thumbY = [Math]::Floor($scrollRatio * $maxThumbY)
+                $thumb.Location = New-Object System.Drawing.Point(1, $thumbY)
             }
         }
     })
